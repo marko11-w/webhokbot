@@ -3,21 +3,21 @@ from flask import Flask, request
 import threading
 import schedule
 import time
-import os
 
-API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+# ✅ معلومات البوت
+API_TOKEN = "7504294266:AAHgYMIxq5G1hxXRmGF2O7zYKKi-bPjReeM"
+ADMIN_ID = 7758666677
 
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
 
-# قاعدة بيانات وهمية - للتجربة فقط
+# قاعدة بيانات وهمية للمستخدمين
 users_data = {
     str(ADMIN_ID): {"balance": 0, "confirmed": True}
 }
 
 def save_data():
-    pass  # يمكن ربطها بـ JSON أو Google Sheets لاحقًا
+    pass  # مستقبلاً يمكن حفظ البيانات إلى ملف أو Google Sheets
 
 def send_daily_profits():
     for uid, user in users_data.items():
