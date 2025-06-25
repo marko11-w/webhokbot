@@ -1,61 +1,71 @@
-import subprocess
-import sys
-
-# دالة لتثبيت مكتبة إذا غير موجودة
-def install_package(package):
-    try:
-        __import__(package)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-# تثبيت المكتبات المطلوبة
-install_package('telebot')
-install_package('requests')
-
 import telebot
-import requests
+from flask import Flask, request
+import threading
 import time
-import itertools
+import os
+import yt_dlp
 
-# توكن البوت الخاص بك
-BOT_TOKEN = "7504294266:AAHgYMIxq5G1hxXRmGF2O7zYKKi-bPjReeM"
-bot = telebot.TeleBot(BOT_TOKEN)
+TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
+WEBHOOK_URL = "https://23webhook-production.up.railway.app/"
 
-SAVE_FILE = "available.txt"
+bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
-def is_available(username):
-    url = f"https://www.instagram.com/{username}/"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    return response.status_code == 404
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot is running."
 
-def generate_three_char_usernames():
-    chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-    for combo in itertools.product(chars, repeat=3):
-        yield ''.join(combo)
+@app.route("/", methods=["POST"])
+def webhook():
+    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+    bot.process_new_updates([update])
+    return "ok", 200
 
-def start_search(chat_id):
-    total_checked = 0
-    found_available = 0
+# ضبط الويب هوك
+bot.remove_webhook()
+time.sleep(1)
+bot.set_webhook(url=WEBHOOK_URL)
 
-    for username in generate_three_char_usernames():
-        total_checked += 1
+# تحميل الفيديو باستخدام yt-dlp
+def download_video(url, chat_id):
+    ydl_opts = {
+        'format': 'mp4',
+        'outtmpl': f'temp/{chat_id}.mp4',
+        'quiet': True,
+        'no_warnings': True,
+    }
+    os.makedirs("temp", exist_ok=True)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        return f'temp/{chat_id}.mp4'
+    except Exception as e:
+        print("Error downloading:", e)
+        return None
 
-        if is_available(username):
-            found_available += 1
-            bot.send_message(chat_id, f"✅ Available username found: @{username}")
-            with open(SAVE_FILE, "a") as file:
-                file.write(username + "\n")
-            return
+@bot.message_handler(func=lambda m: True)
+def handle_message(message):
+    url = message.text
+    if not url.startswith("http"):
+        bot.reply_to(message, "❌ الرجاء إرسال رابط صحيح للفيديو.")
+        return
+    
+    msg = bot.send_message(message.chat.id, "⏳ جاري تحميل الفيديو، يرجى الانتظار...")
+    video_path = download_video(url, message.chat.id)
+    
+    if video_path and os.path.exists(video_path):
+        try:
+            with open(video_path, "rb") as video:
+                bot.send_video(message.chat.id, video)
+            os.remove(video_path)
+            bot.delete_message(message.chat.id, msg.message_id)
+        except Exception as e:
+            bot.reply_to(message, f"❌ حدث خطأ أثناء إرسال الفيديو: {e}")
+    else:
+        bot.edit_message_text("❌ لم أتمكن من تحميل الفيديو. تأكد من صحة الرابط والمنصة المدعومة.", message.chat.id, msg.message_id)
 
-        if total_checked % 100 == 0:
-            bot.send_message(chat_id, f"📊 Checked: {total_checked} usernames\n✅ Found available: {found_available}")
+def run_app():
+    app.run(host="0.0.0.0", port=8080)
 
-        time.sleep(1)
-
-@bot.message_handler(commands=['start'])
-def handle_start(message):
-    bot.reply_to(message, "🔍 Starting search for a 3-character Instagram username (letters + digits)...")
-    start_search(message.chat.id)
-
-bot.polling()
+threading.Thread(target=run_app).start()
+bot.infinity_polling()
