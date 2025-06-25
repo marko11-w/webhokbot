@@ -6,7 +6,7 @@ import os
 import yt_dlp
 
 TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
-WEBHOOK_URL = "https://23webhook-production.up.railway.app/"
+WEBHOOK_URL = "https://webhokbot-production.up.railway.app/"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
