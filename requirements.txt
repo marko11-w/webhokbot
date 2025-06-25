@@ -1,2 +1,3 @@
-pytelegrambotapi
-flask
+pyTelegramBotAPI
+Flask
+yt-dlp
