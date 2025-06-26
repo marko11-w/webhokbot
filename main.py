@@ -1,227 +1,166 @@
 import telebot
-from flask import Flask, request
-import threading
-import time
-import os
-import yt_dlp
 from telebot import types
+from flask import Flask, request
+import json
+import os
+import logging
 
-TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
-bot = telebot.TeleBot(TOKEN)
-WEBHOOK_URL = "https://webhokbot-production.up.railway.app/"
+# ✅ تفعيل الطباعة للتشخيص على Railway
+logging.basicConfig(level=logging.INFO)
 
+API_TOKEN = "7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw"
+ADMIN_ID = 7758666677
+CHANNEL_USERNAME = "@MARK01i"
+bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
+DATA_FILE = "data.json"
 
-@app.route("/", methods=["GET"])
-def index():
-    return "Bot is running."
+default_data = {
+    "buttons": [
+        {"label": "🔓 اختراق إنستقرام", "prompt": "📩 أرسل يوزر أو رابط الحساب المستهدف:"},
+        {"label": "🎯 اختراق تيك توك", "prompt": "📩 أرسل رابط أو يوزر تيك توك:"},
+        {"label": "📘 اختراق فيسبوك", "prompt": "📩 أرسل رابط الحساب أو رقم الهاتف:"},
+        {"label": "📶 اختراق Wi-Fi", "prompt": ""},
+        {"label": "👾 اختراق واتساب", "prompt": "📩 أرسل رقم الهاتف مع مفتاح الدولة:"}
+    ]
+}
 
-@app.route("/", methods=["POST"])
-def webhook():
-    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
-    bot.process_new_updates([update])
-    return "ok", 200
+if not os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "w") as f:
+        json.dump(default_data, f)
 
-bot.remove_webhook()
-time.sleep(1)
-bot.set_webhook(url=WEBHOOK_URL)
+def load_data():
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
 
-# إعدادات الملفات والصلاحيات
-USERS_FILE = "users.txt"
-BANNED_FILE = "banned.txt"
-ADMINS = [7758666677]
-FORCE_CHANNEL = "MARK01i"
-
-# وظائف مساعدة
-def save_user(user_id):
-    try:
-        with open(USERS_FILE, "a+") as f:
-            f.seek(0)
-            users = f.read().splitlines()
-            if str(user_id) not in users:
-                f.write(str(user_id) + "\n")
-    except: pass
-
-def is_banned(user_id):
-    try:
-        with open(BANNED_FILE, "r") as f:
-            return str(user_id) in f.read().splitlines()
-    except: return False
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def check_subscription(user_id):
     try:
-        chat_member = bot.get_chat_member(f"@{FORCE_CHANNEL}", user_id)
-        return chat_member.status in ['member', 'creator', 'administrator']
-    except: return False
-
-# الأزرار
-def main_buttons(user_id):
-    buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    buttons.row("📤 أرسل رابط فيديو", "ℹ️ تعليمات")
-    buttons.row("💬 الدعم الفني")
-    if user_id in ADMINS:
-        buttons.row("⚙️ إدارة البوت")
-    return buttons
-
-def admin_buttons():
-    buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    buttons.row("👥 عدد المستخدمين", "📢 إرسال إعلان")
-    buttons.row("🚫 حظر مستخدم", "✅ فك الحظر")
-    buttons.row("📨 رسالة خاصة", "🔙 رجوع")
-    return buttons
-
-# واجهة البداية
-@bot.message_handler(commands=['start'])
-def start_message(message):
-    user_id = message.from_user.id
-    if is_banned(user_id):
-        return bot.send_message(user_id, "❌ أنت محظور من استخدام البوت.")
-    if not check_subscription(user_id):
-        join_btn = types.InlineKeyboardMarkup()
-        join_btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
-        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=join_btn)
-    save_user(user_id)
-    bot.send_message(user_id,
-        "👋 *مرحباً بك في بوت تحميل الفيديوهات!*\n\n"
-        "🎥 *يدعم التحميل من TikTok، YouTube، Instagram، Pinterest، وغيرها!*\n\n"
-        "📥 *أرسل رابط الفيديو لتحميله فوراً.*",
-        parse_mode="Markdown",
-        reply_markup=main_buttons(user_id))
-
-# تعليمات
-@bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
-def show_help(message):
-    bot.send_message(message.chat.id,
-    "📌 *تعليمات الاستخدام:*\n"
-    "1. أرسل رابط فيديو من TikTok أو YouTube...\n"
-    "2. انتظر التحميل.\n"
-    "3. استلم الفيديو مباشرة ✅", parse_mode="Markdown")
-
-# دعم فني
-@bot.message_handler(func=lambda m: m.text == "💬 الدعم الفني")
-def support_info(message):
-    bot.send_message(message.chat.id, "📨 تواصل مع الدعم: @M_A_R_K75")
-
-# طلب رابط
-@bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
-def ask_for_link(message):
-    bot.send_message(message.chat.id, "✅ *أرسل الآن رابط الفيديو:*", parse_mode="Markdown")
-
-# تحميل فيديو
-def download_video(url, chat_id):
-    os.makedirs("temp", exist_ok=True)
-    output = f"temp/{chat_id}.mp4"
-    opts = {'format': 'mp4', 'outtmpl': output, 'quiet': True, 'no_warnings': True}
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl: ydl.download([url])
-        return output
+        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["member", "creator", "administrator"]
     except Exception as e:
-        print("Download error:", e)
-        return None
+        print(f"[Subscription Error]: {e}")
+        return True  # مؤقتًا لتجنب التوقف أثناء التجربة
 
-@bot.message_handler(func=lambda m: m.text and m.text.startswith("http"))
-def handle_link(message):
-    user_id = message.from_user.id
-    if is_banned(user_id):
-        return bot.send_message(user_id, "❌ أنت محظور من استخدام البوت.")
-    if not check_subscription(user_id):
-        join_btn = types.InlineKeyboardMarkup()
-        join_btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
-        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=join_btn)
-    save_user(user_id)
-    msg = bot.send_message(user_id, "⏳ جاري تحميل الفيديو...")
-    path = download_video(message.text, user_id)
-    if path and os.path.exists(path):
-        with open(path, "rb") as vid: bot.send_video(user_id, vid)
-        os.remove(path)
-        bot.delete_message(user_id, msg.message_id)
+@bot.message_handler(commands=["start"])
+def start(message):
+    user = message.from_user
+    data = load_data()
+
+    if not check_subscription(user.id):
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("اشترك الآن 📢", url=f"https://t.me/MARK01i"))
+        markup.add(types.InlineKeyboardButton("تم الاشتراك ✅", callback_data="check_sub"))
+        bot.send_message(user.id, "👋 للمتابعة، اشترك في القناة أولًا:", reply_markup=markup)
+        return
+
+    bot.send_message(ADMIN_ID, f"👤 مستخدم جديد\nيوزر: @{user.username or 'غير متوفر'}\nID: {user.id}")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for btn in data["buttons"]:
+        markup.add(btn["label"])
+    if str(user.id) == str(ADMIN_ID):
+        markup.add("⚙️ الأدمن")
+    bot.send_message(user.id, "🧠 مرحبًا بك في بوت الاختراق الذكي!\nاختر أحد الأزرار:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "check_sub")
+def check_sub(call):
+    if check_subscription(call.from_user.id):
+        start(call.message)
     else:
-        bot.send_message(user_id, "⚠️ لم أتمكن من تحميل الفيديو.")
+        bot.answer_callback_query(call.id, "❌ لم يتم الاشتراك بعد.")
 
-# دخول لوحة الإدارة
-@bot.message_handler(func=lambda m: m.text == "⚙️ إدارة البوت" and m.from_user.id in ADMINS)
-def show_admin_panel(message):
-    bot.send_message(message.chat.id, "🛠 مرحباً بك في لوحة الإدارة:", reply_markup=admin_buttons())
+@bot.message_handler(commands=["list_buttons"])
+def list_buttons(message):
+    if str(message.from_user.id) != str(ADMIN_ID): return
+    data = load_data()
+    text = "📋 الأزرار الحالية:\n"
+    for i, btn in enumerate(data["buttons"], 1):
+        text += f"{i}. {btn['label']}\n"
+    bot.send_message(message.chat.id, text)
 
-@bot.message_handler(func=lambda m: m.text == "🔙 رجوع")
-def back_to_main(message):
-    bot.send_message(message.chat.id, "⬅️ عدنا للواجهة الرئيسية", reply_markup=main_buttons(message.from_user.id))
+@bot.message_handler(commands=["add_button"])
+def add_button(message):
+    if str(message.from_user.id) != str(ADMIN_ID): return
+    msg = bot.send_message(message.chat.id, "📝 أرسل اسم الزر الجديد:")
+    bot.register_next_step_handler(msg, get_button_label)
 
-# عرض عدد المستخدمين
-@bot.message_handler(func=lambda m: m.text == "👥 عدد المستخدمين" and m.from_user.id in ADMINS)
-def user_count(message):
-    try:
-        with open(USERS_FILE, "r") as f:
-            count = len(f.read().splitlines())
-        bot.send_message(message.chat.id, f"👥 عدد المستخدمين: {count}")
-    except:
-        bot.send_message(message.chat.id, "❌ لا يوجد بيانات.")
+def get_button_label(message):
+    label = message.text
+    msg = bot.send_message(message.chat.id, "📝 أرسل الرسالة التفاعلية عند الضغط:")
+    bot.register_next_step_handler(msg, lambda m: save_new_button(label, m))
 
-# إرسال إعلان
-@bot.message_handler(func=lambda m: m.text == "📢 إرسال إعلان" and m.from_user.id in ADMINS)
-def ask_broadcast(message):
-    sent_msg = bot.send_message(message.chat.id, "📝 أرسل الآن نص الإعلان:")
-    bot.register_next_step_handler(sent_msg, broadcast_message)
+def save_new_button(label, message):
+    prompt = message.text
+    data = load_data()
+    data["buttons"].append({"label": label, "prompt": prompt})
+    save_data(data)
+    bot.send_message(message.chat.id, f"✅ تم إضافة الزر: {label}")
 
-def broadcast_message(message):
-    try:
-        with open(USERS_FILE, "r") as f:
-            users = f.read().splitlines()
-        for uid in users:
-            try:
-                bot.send_message(uid, f"📢 إعلان من الإدارة:\n\n{message.text}")
-                time.sleep(0.1)
-            except: continue
-        bot.send_message(message.chat.id, "✅ تم إرسال الإعلان.")
-    except:
-        bot.send_message(message.chat.id, "❌ حدث خطأ أثناء الإرسال.")
+@bot.message_handler(commands=["remove_button"])
+def remove_button(message):
+    if str(message.from_user.id) != str(ADMIN_ID): return
+    data = load_data()
+    markup = types.InlineKeyboardMarkup()
+    for btn in data["buttons"]:
+        markup.add(types.InlineKeyboardButton(btn["label"], callback_data="delbtn_" + btn["label"]))
+    bot.send_message(message.chat.id, "🗑️ اختر الزر الذي تريد حذفه:", reply_markup=markup)
 
-# حظر مستخدم
-@bot.message_handler(func=lambda m: m.text == "🚫 حظر مستخدم" and m.from_user.id in ADMINS)
-def ask_ban(message):
-    msg = bot.send_message(message.chat.id, "✏️ أرسل آيدي المستخدم لحظره:")
-    bot.register_next_step_handler(msg, ban_user)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delbtn_"))
+def delete_button(call):
+    if str(call.from_user.id) != str(ADMIN_ID): return
+    label = call.data.replace("delbtn_", "")
+    data = load_data()
+    data["buttons"] = [b for b in data["buttons"] if b["label"] != label]
+    save_data(data)
+    bot.edit_message_text(f"✅ تم حذف الزر: {label}", call.message.chat.id, call.message.message_id)
 
-def ban_user(message):
-    with open(BANNED_FILE, "a") as f:
-        f.write(str(message.text.strip()) + "\n")
-    bot.send_message(message.chat.id, f"🚫 تم حظر المستخدم {message.text}")
+@bot.message_handler(func=lambda m: m.text == "⚙️ الأدمن" and str(m.from_user.id) == str(ADMIN_ID))
+def admin_panel(message):
+    bot.send_message(message.chat.id, "🛠️ لوحة تحكم الأدمن:\n/list_buttons - عرض الأزرار\n/add_button - إضافة زر\n/remove_button - حذف زر")
 
-# فك الحظر
-@bot.message_handler(func=lambda m: m.text == "✅ فك الحظر" and m.from_user.id in ADMINS)
-def ask_unban(message):
-    msg = bot.send_message(message.chat.id, "✏️ أرسل آيدي المستخدم لفك الحظر:")
-    bot.register_next_step_handler(msg, unban_user)
+@bot.message_handler(func=lambda m: True)
+def handle_buttons(message):
+    data = load_data()
+    for btn in data["buttons"]:
+        if message.text == btn["label"]:
+            if btn["prompt"]:
+                bot.send_message(message.chat.id, btn["prompt"])
+                bot.register_next_step_handler(message, lambda m: fake_process(m, btn["label"]))
+            else:
+                fake_process(message, btn["label"])
+            return
 
-def unban_user(message):
-    try:
-        with open(BANNED_FILE, "r") as f:
-            lines = f.readlines()
-        with open(BANNED_FILE, "w") as f:
-            for line in lines:
-                if line.strip() != message.text.strip():
-                    f.write(line)
-        bot.send_message(message.chat.id, f"✅ تم فك الحظر عن {message.text}")
-    except:
-        bot.send_message(message.chat.id, "❌ فشل في فك الحظر.")
+def fake_process(message, label):
+    msgs = [
+        "🔍 جاري تحليل الهدف...",
+        "📡 الاتصال بالخوادم...",
+        "🧠 تفعيل الذكاء الاصطناعي...",
+        "🔓 فك التشفير...",
+        "📂 استخراج البيانات...",
+        f"✅ كلمة السر المحتملة: pass@{str(message.from_user.id)[-3:]}{label[:3]}",
+        "✅ تم الاختراق بنجاح."
+    ]
+    for msg in msgs:
+        bot.send_message(message.chat.id, msg)
 
-# رسالة خاصة
-@bot.message_handler(func=lambda m: m.text == "📨 رسالة خاصة" and m.from_user.id in ADMINS)
-def ask_pm(message):
-    msg = bot.send_message(message.chat.id, "✉️ أرسل الآيدي ثم الرسالة بالشكل:\n\n123456 رسالة")
-    bot.register_next_step_handler(msg, pm_send)
+# 📡 نقطة الاستقبال من تيليجرام
+@app.route(f"/{API_TOKEN}", methods=["POST"])
+def webhook():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "OK", 200
 
-def pm_send(message):
-    try:
-        uid, txt = message.text.strip().split(" ", 1)
-        bot.send_message(int(uid), f"📩 رسالة من الأدمن:\n\n{txt}")
-        bot.send_message(message.chat.id, "✅ تم الإرسال.")
-    except:
-        bot.send_message(message.chat.id, "❌ صيغة خاطئة. استخدم:\n123456 رسالة")
+# 🌐 الصفحة الرئيسية
+@app.route("/")
+def index():
+    return "✅ البوت يعمل!"
 
-# بدء التشغيل
-def run_app():
-    app.run(host="0.0.0.0", port=8080)
+# ❗️ إعداد Webhook
+bot.remove_webhook()
+bot.set_webhook(url="https://webhokbot-bothack.up.railway.app/7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw")
 
-threading.Thread(target=run_app).start()
-bot.infinity_polling()
+# 🚀 تشغيل الخادم
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
