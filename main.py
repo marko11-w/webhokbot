@@ -7,14 +7,15 @@ import logging
 import time
 import datetime
 
-# ✅ تفعيل الطباعة للتشخيص على Railway
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = "7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw"
 ADMIN_ID = 7758666677
 CHANNEL_USERNAME = "@MARK01i"
+
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
+
 DATA_FILE = "data.json"
 USERS_FILE = "users.json"
 SUBSCRIPTION_FILE = "subscriptions.json"
@@ -80,9 +81,11 @@ def start(message):
     if not is_subscribed(user.id):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("قناة الاشتراك 📢", url="https://t.me/MARK01i"))
-        bot.send_message(user.id, "✋ لاستخدام البوت عليك الاشتراك بسعر 30 آسيا شهريًا.\n"
-                                  "📥 بعد الدفع، أرسل صورة بطاقة الرصيد هنا.\n"
-                                  "👤 المالك: @M_A_R_K75", reply_markup=markup)
+        bot.send_message(user.id,
+                         "✋ لاستخدام البوت عليك الاشتراك بسعر 30 آسيا شهريًا.\n"
+                         "📥 بعد الدفع، أرسل صورة بطاقة الرصيد هنا.\n"
+                         "👤 المالك: @M_A_R_K75",
+                         reply_markup=markup)
         return
 
     data = load_data()
@@ -217,4 +220,27 @@ def fake_process(message, label):
             pass
         time.sleep(1.5)
 
-    for msg in loading
+    for msg in loading_msgs[1:]:
+        bot.send_message(chat_id, msg)
+        time.sleep(1.5)
+
+    bot.send_message(chat_id, f"✅ كلمة السر المحتملة: pass@{str(message.from_user.id)[-3:]}{label[:3]}")
+    bot.send_message(chat_id, "✅ تم الاختراق بنجاح.")
+
+@app.route(f"/{API_TOKEN}", methods=["POST"])
+def webhook():
+    json_str = request.stream.read().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
+
+@app.route("/")
+def index():
+    return "✅ البوت يعمل!"
+
+bot.remove_webhook()
+bot.set_webhook(url=f"https://webhokbot-bothack.up.railway.app/{API_TOKEN}")
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
