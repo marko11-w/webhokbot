@@ -5,6 +5,7 @@ import json
 import os
 import logging
 import time
+import datetime
 
 # ✅ تفعيل الطباعة للتشخيص على Railway
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +16,8 @@ CHANNEL_USERNAME = "@MARK01i"
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
 DATA_FILE = "data.json"
+USERS_FILE = "users.json"
+SUBSCRIPTION_FILE = "subscriptions.json"
 
 default_data = {
     "buttons": [
@@ -38,26 +41,51 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def check_subscription(user_id):
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ["member", "creator", "administrator"]
-    except Exception as e:
-        print(f"[Subscription Error]: {e}")
-        return True  # مؤقتًا لتجنب التوقف أثناء التجربة
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        return {}
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
+
+def save_users(data):
+    with open(USERS_FILE, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def load_subscriptions():
+    if not os.path.exists(SUBSCRIPTION_FILE):
+        return {}
+    with open(SUBSCRIPTION_FILE, "r") as f:
+        return json.load(f)
+
+def save_subscriptions(data):
+    with open(SUBSCRIPTION_FILE, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def is_subscribed(user_id):
+    subs = load_subscriptions()
+    if str(user_id) in subs:
+        expiry_str = subs[str(user_id)]
+        expiry_date = datetime.datetime.strptime(expiry_str, "%Y-%m-%d")
+        if expiry_date >= datetime.datetime.now():
+            return True
+    return False
 
 @bot.message_handler(commands=["start"])
 def start(message):
     user = message.from_user
-    data = load_data()
+    users = load_users()
+    users[str(user.id)] = user.username or ""
+    save_users(users)
 
-    if not check_subscription(user.id):
+    if not is_subscribed(user.id):
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("اشترك الآن 📢", url=f"https://t.me/MARK01i"))
-        markup.add(types.InlineKeyboardButton("تم الاشتراك ✅", callback_data="check_sub"))
-        bot.send_message(user.id, "👋 للمتابعة، اشترك في القناة أولًا:", reply_markup=markup)
+        markup.add(types.InlineKeyboardButton("قناة الاشتراك 📢", url="https://t.me/MARK01i"))
+        bot.send_message(user.id, "✋ لاستخدام البوت عليك الاشتراك بسعر 30 آسيا شهريًا.\n"
+                                  "📥 بعد الدفع، أرسل صورة بطاقة الرصيد هنا.\n"
+                                  "👤 المالك: @M_A_R_K75", reply_markup=markup)
         return
 
+    data = load_data()
     bot.send_message(ADMIN_ID, f"👤 مستخدم جديد\nيوزر: @{user.username or 'غير متوفر'}\nID: {user.id}")
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for btn in data["buttons"]:
@@ -66,12 +94,45 @@ def start(message):
         markup.add("⚙️ الأدمن")
     bot.send_message(user.id, "🧠 مرحبًا بك في بوت الاختراق الذكي!\nاختر أحد الأزرار:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data == "check_sub")
-def check_sub(call):
-    if check_subscription(call.from_user.id):
-        start(call.message)
+@bot.message_handler(content_types=['photo'])
+def photo_handler(message):
+    user = message.from_user
+    if not is_subscribed(user.id):
+        file_id = message.photo[-1].file_id
+        caption = f"📥 صورة دفع من المستخدم:\nيوزر: @{user.username or 'غير متوفر'}\nID: {user.id}"
+        bot.send_photo(ADMIN_ID, file_id, caption=caption)
+        bot.send_message(user.id, "✅ تم إرسال صورة الدفع للمالك. انتظر التفعيل.")
     else:
-        bot.answer_callback_query(call.id, "❌ لم يتم الاشتراك بعد.")
+        bot.send_message(user.id, "🔔 أنت مشترك بالفعل، يمكنك استخدام البوت.")
+
+@bot.message_handler(commands=['done'])
+def done_command(message):
+    if str(message.from_user.id) != str(ADMIN_ID):
+        return
+    try:
+        username = message.text.split()[1].lstrip('@')
+    except IndexError:
+        bot.send_message(message.chat.id, "❌ استخدم الصيغة: /done username")
+        return
+
+    users = load_users()
+    user_id = None
+    for uid, uname in users.items():
+        if uname.lower() == username.lower():
+            user_id = uid
+            break
+
+    if user_id is None:
+        bot.send_message(message.chat.id, f"❌ لم أجد المستخدم @{username}")
+        return
+
+    subs = load_subscriptions()
+    expiry_date = datetime.datetime.now() + datetime.timedelta(days=30)
+    subs[user_id] = expiry_date.strftime("%Y-%m-%d")
+    save_subscriptions(subs)
+
+    bot.send_message(message.chat.id, f"✅ تم تفعيل الاشتراك للمستخدم @{username}")
+    bot.send_message(user_id, "🎉 تم تفعيل اشتراكك، يمكنك الآن استخدام البوت.")
 
 @bot.message_handler(commands=["list_buttons"])
 def list_buttons(message):
@@ -145,11 +206,9 @@ def fake_process(message, label):
         "📂 استخراج البيانات...",
     ]
 
-    # إرسال أول رسالة ثابتة
     sent_msg = bot.send_message(chat_id, loading_msgs[0])
     time.sleep(2)
 
-    # عرض مؤثرات تحميل نصية تدريجية
     progress_stages = [10, 25, 40, 55, 70, 85, 100]
     for percent in progress_stages:
         try:
@@ -158,31 +217,4 @@ def fake_process(message, label):
             pass
         time.sleep(1.5)
 
-    # إرسال باقي الرسائل مع تأخير
-    for msg in loading_msgs[1:]:
-        bot.send_message(chat_id, msg)
-        time.sleep(2)
-
-    # رسالة النتيجة النهائية
-    bot.send_message(chat_id, f"✅ كلمة السر المحتملة: pass@{str(message.from_user.id)[-3:]}{label[:3]}")
-    time.sleep(2)
-    bot.send_message(chat_id, "✅ تم الاختراق بنجاح.")
-
-# 📡 نقطة الاستقبال من تيليجرام
-@app.route(f"/{API_TOKEN}", methods=["POST"])
-def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
-
-# 🌐 الصفحة الرئيسية
-@app.route("/")
-def index():
-    return "✅ البوت يعمل!"
-
-# ❗️ إعداد Webhook
-bot.remove_webhook()
-bot.set_webhook(url="https://webhokbot-bothack.up.railway.app/7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw")
-
-# 🚀 تشغيل الخادم
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    for msg in loading
