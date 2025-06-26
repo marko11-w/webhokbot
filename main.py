@@ -4,6 +4,7 @@ from flask import Flask, request
 import json
 import os
 import logging
+import time
 
 # ✅ تفعيل الطباعة للتشخيص على Railway
 logging.basicConfig(level=logging.INFO)
@@ -134,17 +135,38 @@ def handle_buttons(message):
             return
 
 def fake_process(message, label):
-    msgs = [
+    chat_id = message.chat.id
+
+    loading_msgs = [
         "🔍 جاري تحليل الهدف...",
         "📡 الاتصال بالخوادم...",
         "🧠 تفعيل الذكاء الاصطناعي...",
         "🔓 فك التشفير...",
         "📂 استخراج البيانات...",
-        f"✅ كلمة السر المحتملة: pass@{str(message.from_user.id)[-3:]}{label[:3]}",
-        "✅ تم الاختراق بنجاح."
     ]
-    for msg in msgs:
-        bot.send_message(message.chat.id, msg)
+
+    # إرسال أول رسالة ثابتة
+    sent_msg = bot.send_message(chat_id, loading_msgs[0])
+    time.sleep(2)
+
+    # عرض مؤثرات تحميل نصية تدريجية
+    progress_stages = [10, 25, 40, 55, 70, 85, 100]
+    for percent in progress_stages:
+        try:
+            bot.edit_message_text(f"🔄 جاري الاختراق... {percent}% 🔄", chat_id, sent_msg.message_id)
+        except Exception:
+            pass
+        time.sleep(1.5)
+
+    # إرسال باقي الرسائل مع تأخير
+    for msg in loading_msgs[1:]:
+        bot.send_message(chat_id, msg)
+        time.sleep(2)
+
+    # رسالة النتيجة النهائية
+    bot.send_message(chat_id, f"✅ كلمة السر المحتملة: pass@{str(message.from_user.id)[-3:]}{label[:3]}")
+    time.sleep(2)
+    bot.send_message(chat_id, "✅ تم الاختراق بنجاح.")
 
 # 📡 نقطة الاستقبال من تيليجرام
 @app.route(f"/{API_TOKEN}", methods=["POST"])
