@@ -51,7 +51,7 @@ def get_main_keyboard(user_id):
 @bot.message_handler(commands=["start"])
 def start_handler(message):
     user_id = message.from_user.id
-    bot.send_message(user_id, "أهلاً بك في بوت الاختراق المزيف 🎯\nيرجى الضغط على أحد الأزرار لاختيار نوع الاختراق.", reply_markup=get_main_keyboard(user_id))
+    bot.send_message(user_id, "أهلاً بك في بوت الاختراق 🎯\nاختر نوع الاختراق من الأزرار أدناه:", reply_markup=get_main_keyboard(user_id))
     # تسجيل المستخدم مع تفعيل الاشتراك تلقائيًا False
     data = load_data()
     user_str = str(user_id)
@@ -65,7 +65,6 @@ def callback_hack(call):
     if not is_subscribed(user_id):
         bot.answer_callback_query(call.id, "عليك مراسلة الأدمن لتفعيل الاشتراك.", show_alert=True)
         return
-    # بعد التحقق، نطلب من المستخدم إرسال معرف أو رابط الحساب
     bot.answer_callback_query(call.id)
     msg = bot.send_message(user_id, f"📤 أرسل معرف الحساب أو رابط الحساب لـ {call.data[5:].capitalize()}:")
     bot.register_next_step_handler(msg, lambda m: fake_hack_process(m, call.data[5:]))
@@ -73,11 +72,16 @@ def callback_hack(call):
 def fake_hack_process(message, hack_type):
     user_id = message.from_user.id
     target = message.text
-    bot.send_message(user_id, "🔍 جاري تحليل الهدف...")
-    bot.send_message(user_id, "📡 الاتصال بالخوادم...")
-    bot.send_message(user_id, "🧠 تفعيل الذكاء الاصطناعي...")
-    # يمكنك إضافة خطوات أخرى وهمية هنا حسب رغبتك
-    bot.send_message(user_id, f"✅ تم الحصول على بيانات {hack_type} بنجاح!\n(هذا بوت مزيف للترفيه فقط)")
+    loading_msgs = [
+        "🔍 جاري تحليل الهدف...",
+        "📡 الاتصال بالخوادم...",
+        "🧠 تفعيل الذكاء الاصطناعي...",
+        "🔓 فك التشفير...",
+        "📂 استخراج البيانات...",
+        f"✅ تم الحصول على بيانات {hack_type} بنجاح!"
+    ]
+    for msg in loading_msgs:
+        bot.send_message(user_id, msg)
 
 # --- أوامر الأدمن لتفعيل/تعطيل الاشتراك ---
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text)
@@ -119,8 +123,7 @@ def webhook():
     return "OK"
 
 bot.remove_webhook()
-# ضع رابط مشروعك مع التوكن الخاص بك
-WEBHOOK_URL = "https://webhokbot-bothack.up.railway.app/" + TOKEN
+WEBHOOK_URL = "https://webhokbot-bothack.up.railway.app/" + TOKEN  # عدل الرابط إلى رابط مشروعك
 bot.set_webhook(url=WEBHOOK_URL)
 
 if __name__ == "__main__":
