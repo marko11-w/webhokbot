@@ -6,7 +6,6 @@ import os
 
 TOKEN = "7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw"
 ADMIN_ID = 7758666677
-CHANNEL_USERNAME = "MARK01i"
 DATA_FILE = "data.json"
 
 bot = telebot.TeleBot(TOKEN)
@@ -40,50 +39,31 @@ def set_subscription(user_id, status: bool):
     data["users"][user_str]["active"] = status
     save_data(data)
 
-def get_main_keyboard(user_id):
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("📘 اختراق فيسبوك", callback_data="hack_facebook"))
-    kb.add(InlineKeyboardButton("📸 اختراق انستجرام", callback_data="hack_instagram"))
-    kb.add(InlineKeyboardButton("🎵 اختراق تيك توك", callback_data="hack_tiktok"))
-    kb.add(InlineKeyboardButton("📶 اختراق واي فاي", callback_data="hack_wifi"))
-    return kb
+# رسالة ثابتة لجميع المستخدمين
+def send_contact_admin_message(chat_id):
+    bot.send_message(chat_id, "عليك مراسلة الأدمن لتفعيل الاشتراك في البوت.")
 
 @bot.message_handler(commands=["start"])
 def start_handler(message):
     user_id = message.from_user.id
-    bot.send_message(user_id, "أهلاً بك في بوت الاختراق 🎯\nاختر نوع الاختراق من الأزرار أدناه:", reply_markup=get_main_keyboard(user_id))
-    # تسجيل المستخدم مع تفعيل الاشتراك تلقائيًا False
+    # سجّل المستخدم في data.json لو مش موجود
     data = load_data()
     user_str = str(user_id)
     if user_str not in data["users"]:
         data["users"][user_str] = {"active": False}
         save_data(data)
+    send_contact_admin_message(user_id)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("hack_"))
-def callback_hack(call):
-    user_id = call.from_user.id
-    if not is_subscribed(user_id):
-        bot.answer_callback_query(call.id, "عليك مراسلة الأدمن لتفعيل الاشتراك.", show_alert=True)
-        return
+@bot.message_handler(func=lambda m: True)
+def all_messages_handler(message):
+    send_contact_admin_message(message.chat.id)
+
+@bot.callback_query_handler(func=lambda call: True)
+def all_callback_handler(call):
+    send_contact_admin_message(call.from_user.id)
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(user_id, f"📤 أرسل معرف الحساب أو رابط الحساب لـ {call.data[5:].capitalize()}:")
-    bot.register_next_step_handler(msg, lambda m: fake_hack_process(m, call.data[5:]))
 
-def fake_hack_process(message, hack_type):
-    user_id = message.from_user.id
-    target = message.text
-    loading_msgs = [
-        "🔍 جاري تحليل الهدف...",
-        "📡 الاتصال بالخوادم...",
-        "🧠 تفعيل الذكاء الاصطناعي...",
-        "🔓 فك التشفير...",
-        "📂 استخراج البيانات...",
-        f"✅ تم الحصول على بيانات {hack_type} بنجاح!"
-    ]
-    for msg in loading_msgs:
-        bot.send_message(user_id, msg)
-
-# --- أوامر الأدمن لتفعيل/تعطيل الاشتراك ---
+# أوامر الأدمن لتفعيل/تعطيل الاشتراك فقط
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text)
 def admin_commands(message):
     text = message.text.strip()
@@ -93,7 +73,7 @@ def admin_commands(message):
             target_id = parts[1]
             set_subscription(target_id, True)
             bot.send_message(ADMIN_ID, f"تم تفعيل الاشتراك للمستخدم {target_id}")
-            bot.send_message(int(target_id), "🎉 تم تفعيل اشتراكك في البوت، يمكنك الآن استخدام الأزرار.")
+            bot.send_message(int(target_id), "🎉 تم تفعيل اشتراكك في البوت، يمكنك الآن استخدامه.")
         else:
             bot.send_message(ADMIN_ID, "استخدام: /activate user_id")
     elif text.startswith("/deactivate"):
@@ -102,7 +82,7 @@ def admin_commands(message):
             target_id = parts[1]
             set_subscription(target_id, False)
             bot.send_message(ADMIN_ID, f"تم تعطيل الاشتراك للمستخدم {target_id}")
-            bot.send_message(int(target_id), "⚠️ تم تعطيل اشتراكك في البوت، يرجى مراسلة الأدمن.")
+            bot.send_message(int(target_id), "⚠️ تم تعطيل اشتراكك في البوت.")
         else:
             bot.send_message(ADMIN_ID, "استخدام: /deactivate user_id")
     elif text == "/list":
@@ -112,7 +92,6 @@ def admin_commands(message):
         bot.send_message(ADMIN_ID, msg)
 
 # Flask ويب هوك
-from flask import Flask, request
 app = Flask(__name__)
 
 @app.route(f"/{TOKEN}", methods=["POST"])
@@ -123,7 +102,7 @@ def webhook():
     return "OK"
 
 bot.remove_webhook()
-WEBHOOK_URL = "https://webhokbot-bothack.up.railway.app/" + TOKEN  # عدل الرابط إلى رابط مشروعك
+WEBHOOK_URL = "https://webhokbot-bothack.up.railway.app/" + TOKEN  # عدل إلى رابط مشروعك
 bot.set_webhook(url=WEBHOOK_URL)
 
 if __name__ == "__main__":
