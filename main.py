@@ -1,116 +1,127 @@
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 from flask import Flask, request
 import json
 import os
-import time
 
-API_TOKEN = "7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw"
-CHANNEL_USERNAME = "MARK01i"
+TOKEN = "7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw"
 ADMIN_ID = 7758666677
+CHANNEL_USERNAME = "MARK01i"
 DATA_FILE = "data.json"
 
-bot = telebot.TeleBot(API_TOKEN)
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# تأكد من وجود ملف البيانات
+# تحميل أو إنشاء ملف البيانات
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f:
-        json.dump({"users": []}, f)
+        json.dump({
+            "users": {},  # user_id: { "active": bool }
+        }, f)
 
-def load_users():
+def load_data():
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
-def save_users(data):
+def save_data(data):
     with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=2)
 
 def is_subscribed(user_id):
-    try:
-        status = bot.get_chat_member(f"@{CHANNEL_USERNAME}", user_id).status
-        return status in ["member", "administrator", "creator"]
-    except:
-        return False
+    data = load_data()
+    user_str = str(user_id)
+    return data["users"].get(user_str, {}).get("active", False)
 
-def send_subscription_prompt(chat_id):
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("اشترك في القناة", url=f"https://t.me/{CHANNEL_USERNAME}"))
-    bot.send_message(chat_id, "📛 يجب عليك الاشتراك في القناة أولاً لاستخدام هذا البوت.", reply_markup=keyboard)
+def set_subscription(user_id, status: bool):
+    data = load_data()
+    user_str = str(user_id)
+    if user_str not in data["users"]:
+        data["users"][user_str] = {}
+    data["users"][user_str]["active"] = status
+    save_data(data)
+
+def get_main_keyboard(user_id):
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("📘 اختراق فيسبوك", callback_data="hack_facebook"))
+    kb.add(InlineKeyboardButton("📸 اختراق انستجرام", callback_data="hack_instagram"))
+    kb.add(InlineKeyboardButton("🎵 اختراق تيك توك", callback_data="hack_tiktok"))
+    kb.add(InlineKeyboardButton("📶 اختراق واي فاي", callback_data="hack_wifi"))
+    return kb
 
 @bot.message_handler(commands=["start"])
-def handle_start(message):
+def start_handler(message):
     user_id = message.from_user.id
-    data = load_users()
-    if user_id not in data["users"]:
-        data["users"].append(user_id)
-        save_users(data)
-        bot.send_message(ADMIN_ID, f"🔔 مستخدم جديد بدأ البوت: @{message.from_user.username or 'لا يوجد'} - {user_id}")
+    bot.send_message(user_id, "أهلاً بك في بوت الاختراق المزيف 🎯\nيرجى الضغط على أحد الأزرار لاختيار نوع الاختراق.", reply_markup=get_main_keyboard(user_id))
+    # تسجيل المستخدم مع تفعيل الاشتراك تلقائيًا False
+    data = load_data()
+    user_str = str(user_id)
+    if user_str not in data["users"]:
+        data["users"][user_str] = {"active": False}
+        save_data(data)
 
-    if not is_subscribed(user_id):
-        send_subscription_prompt(user_id)
-        return
-
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("📘 اختراق فيسبوك", callback_data="hack_facebook"))
-    keyboard.add(InlineKeyboardButton("📷 اختراق انستقرام", callback_data="hack_instagram"))
-    keyboard.add(InlineKeyboardButton("🎥 اختراق تيك توك", callback_data="hack_tiktok"))
-    keyboard.add(InlineKeyboardButton("📶 اختراق شبكات WiFi", callback_data="hack_wifi"))
-    bot.send_message(user_id, "🎯 اختر نوع الخدمة:", reply_markup=keyboard)
-
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("hack_"))
+def callback_hack(call):
     user_id = call.from_user.id
     if not is_subscribed(user_id):
-        send_subscription_prompt(user_id)
+        bot.answer_callback_query(call.id, "عليك مراسلة الأدمن لتفعيل الاشتراك.", show_alert=True)
         return
+    # بعد التحقق، نطلب من المستخدم إرسال معرف أو رابط الحساب
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(user_id, f"📤 أرسل معرف الحساب أو رابط الحساب لـ {call.data[5:].capitalize()}:")
+    bot.register_next_step_handler(msg, lambda m: fake_hack_process(m, call.data[5:]))
 
-    label = call.data.replace("hack_", "").capitalize()
-    msg = bot.send_message(call.message.chat.id, f"📥 أرسل رابط الحساب أو رقم الهاتف لبدء عملية {label}:")
-    bot.register_next_step_handler(msg, process_target, label)
+def fake_hack_process(message, hack_type):
+    user_id = message.from_user.id
+    target = message.text
+    bot.send_message(user_id, "🔍 جاري تحليل الهدف...")
+    bot.send_message(user_id, "📡 الاتصال بالخوادم...")
+    bot.send_message(user_id, "🧠 تفعيل الذكاء الاصطناعي...")
+    # يمكنك إضافة خطوات أخرى وهمية هنا حسب رغبتك
+    bot.send_message(user_id, f"✅ تم الحصول على بيانات {hack_type} بنجاح!\n(هذا بوت مزيف للترفيه فقط)")
 
-def process_target(message, label):
-    chat_id = message.chat.id
+# --- أوامر الأدمن لتفعيل/تعطيل الاشتراك ---
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.text)
+def admin_commands(message):
+    text = message.text.strip()
+    if text.startswith("/activate"):
+        parts = text.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            target_id = parts[1]
+            set_subscription(target_id, True)
+            bot.send_message(ADMIN_ID, f"تم تفعيل الاشتراك للمستخدم {target_id}")
+            bot.send_message(int(target_id), "🎉 تم تفعيل اشتراكك في البوت، يمكنك الآن استخدام الأزرار.")
+        else:
+            bot.send_message(ADMIN_ID, "استخدام: /activate user_id")
+    elif text.startswith("/deactivate"):
+        parts = text.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            target_id = parts[1]
+            set_subscription(target_id, False)
+            bot.send_message(ADMIN_ID, f"تم تعطيل الاشتراك للمستخدم {target_id}")
+            bot.send_message(int(target_id), "⚠️ تم تعطيل اشتراكك في البوت، يرجى مراسلة الأدمن.")
+        else:
+            bot.send_message(ADMIN_ID, "استخدام: /deactivate user_id")
+    elif text == "/list":
+        data = load_data()
+        users = [f"{uid} - {'مفعل' if info.get('active', False) else 'معطل'}" for uid, info in data["users"].items()]
+        msg = "قائمة المستخدمين:\n" + "\n".join(users)
+        bot.send_message(ADMIN_ID, msg)
 
-    loading_msgs = [
-        "🔍 جاري تحليل الهدف...",
-        "📡 الاتصال بالخوادم...",
-        "🧠 تفعيل الذكاء الاصطناعي...",
-        "🔓 فك التشفير...",
-        "📂 استخراج البيانات...",
-    ]
+# Flask ويب هوك
+from flask import Flask, request
+app = Flask(__name__)
 
-    sent_msg = bot.send_message(chat_id, loading_msgs[0])
-    time.sleep(1.5)
-
-    for percent in [15, 33, 58, 76, 100]:
-        try:
-            bot.edit_message_text(f"🔄 جاري تنفيذ العملية... {percent}%", chat_id, sent_msg.message_id)
-        except:
-            pass
-        time.sleep(1.3)
-
-    for msg in loading_msgs[1:]:
-        bot.send_message(chat_id, msg)
-        time.sleep(1.8)
-
-    password = f"pass_{str(message.from_user.id)[-3:]}_{label[:3]}"
-    bot.send_message(chat_id, f"✅ كلمة السر المحتملة: {password}")
-    bot.send_message(chat_id, f"✅ تم تنفيذ العملية بنجاح.")
-
-# Webhook endpoints
-@app.route(f"/{API_TOKEN}", methods=["POST"])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+    json_string = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_string)
     bot.process_new_updates([update])
-    return "ok"
-
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot is running!"
+    return "OK"
 
 bot.remove_webhook()
-bot.set_webhook(url=f"https://charhbot-production.up.railway.app/{API_TOKEN}")
+# ضع رابط مشروعك مع التوكن الخاص بك
+WEBHOOK_URL = "https://webhokbot-bothack.up.railway.app/" + TOKEN
+bot.set_webhook(url=WEBHOOK_URL)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
