@@ -1,246 +1,112 @@
 import telebot
-from telebot import types
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from flask import Flask, request
-import json
-import os
-import logging
-import time
-import datetime
+import json, os
 
-logging.basicConfig(level=logging.INFO)
-
-API_TOKEN = "7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw"
+TOKEN = "7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw"
 ADMIN_ID = 7758666677
-CHANNEL_USERNAME = "@MARK01i"
+CHANNEL_USERNAME = "MARK01i"
+DATA_FILE = "data.json"
 
-bot = telebot.TeleBot(API_TOKEN)
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-DATA_FILE = "data.json"
-USERS_FILE = "users.json"
-SUBSCRIPTION_FILE = "subscriptions.json"
-
-default_data = {
-    "buttons": [
-        {"label": "🔓 اختراق إنستقرام", "prompt": "📩 أرسل يوزر أو رابط الحساب المستهدف:"},
-        {"label": "🎯 اختراق تيك توك", "prompt": "📩 أرسل رابط أو يوزر تيك توك:"},
-        {"label": "📘 اختراق فيسبوك", "prompt": "📩 أرسل رابط الحساب أو رقم الهاتف:"},
-        {"label": "📶 اختراق Wi-Fi", "prompt": ""},
-        {"label": "👾 اختراق واتساب", "prompt": "📩 أرسل رقم الهاتف مع مفتاح الدولة:"}
-    ]
-}
-
+# إنشاء ملف المستخدمين إذا غير موجود
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f:
-        json.dump(default_data, f)
+        json.dump({"users": []}, f)
 
-def load_data():
+def load_users():
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def load_users():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
-
 def save_users(data):
-    with open(USERS_FILE, "w") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def load_subscriptions():
-    if not os.path.exists(SUBSCRIPTION_FILE):
-        return {}
-    with open(SUBSCRIPTION_FILE, "r") as f:
-        return json.load(f)
-
-def save_subscriptions(data):
-    with open(SUBSCRIPTION_FILE, "w") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
 def is_subscribed(user_id):
-    subs = load_subscriptions()
-    if str(user_id) in subs:
-        expiry_str = subs[str(user_id)]
-        expiry_date = datetime.datetime.strptime(expiry_str, "%Y-%m-%d")
-        if expiry_date >= datetime.datetime.now():
-            return True
-    return False
+    try:
+        member = bot.get_chat_member(f"@{CHANNEL_USERNAME}", user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+def main_buttons():
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("📘 اختراق فيسبوك", "📷 اختراق انستقرام")
+    markup.add("🎥 اختراق تيك توك", "📱 اختراق واتساب")
+    markup.add("📶 اختراق واي فاي")
+    markup.add("👤 عدد المستخدمين", "📣 رسالة جماعية")
+    return markup
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    user = message.from_user
-    users = load_users()
-    users[str(user.id)] = user.username or ""
-    save_users(users)
+    user_id = message.from_user.id
+    data = load_users()
+    if user_id not in data["users"]:
+        data["users"].append(user_id)
+        save_users(data)
+        bot.send_message(ADMIN_ID, f"🆕 مستخدم جديد:\nID: `{user_id}`", parse_mode="Markdown")
 
-    if not is_subscribed(user.id):
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("قناة الاشتراك 📢", url="https://t.me/MARK01i"))
-        bot.send_message(user.id,
-                         "✋ لاستخدام البوت عليك الاشتراك بسعر 30 آسيا شهريًا.\n"
-                         "📥 بعد الدفع، أرسل صورة بطاقة الرصيد هنا.\n"
-                         "👤 المالك: @M_A_R_K75",
-                         reply_markup=markup)
-        return
+    if not is_subscribed(user_id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🔗 اشترك الآن", url=f"https://t.me/{CHANNEL_USERNAME}"))
+        return bot.send_message(user_id, "📛 يجب الاشتراك في القناة لاستخدام البوت", reply_markup=markup)
 
-    data = load_data()
-    bot.send_message(ADMIN_ID, f"👤 مستخدم جديد\nيوزر: @{user.username or 'غير متوفر'}\nID: {user.id}")
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    for btn in data["buttons"]:
-        markup.add(btn["label"])
-    if str(user.id) == str(ADMIN_ID):
-        markup.add("⚙️ الأدمن")
-    bot.send_message(user.id, "🧠 مرحبًا بك في بوت الاختراق الذكي!\nاختر أحد الأزرار:", reply_markup=markup)
-
-@bot.message_handler(content_types=['photo'])
-def photo_handler(message):
-    user = message.from_user
-    if not is_subscribed(user.id):
-        file_id = message.photo[-1].file_id
-        caption = f"📥 صورة دفع من المستخدم:\nيوزر: @{user.username or 'غير متوفر'}\nID: {user.id}"
-        bot.send_photo(ADMIN_ID, file_id, caption=caption)
-        bot.send_message(user.id, "✅ تم إرسال صورة الدفع للمالك. انتظر التفعيل.")
-    else:
-        bot.send_message(user.id, "🔔 أنت مشترك بالفعل، يمكنك استخدام البوت.")
-
-@bot.message_handler(commands=['done'])
-def done_command(message):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return
-    try:
-        username = message.text.split()[1].lstrip('@')
-    except IndexError:
-        bot.send_message(message.chat.id, "❌ استخدم الصيغة: /done username")
-        return
-
-    users = load_users()
-    user_id = None
-    for uid, uname in users.items():
-        if uname.lower() == username.lower():
-            user_id = uid
-            break
-
-    if user_id is None:
-        bot.send_message(message.chat.id, f"❌ لم أجد المستخدم @{username}")
-        return
-
-    subs = load_subscriptions()
-    expiry_date = datetime.datetime.now() + datetime.timedelta(days=30)
-    subs[user_id] = expiry_date.strftime("%Y-%m-%d")
-    save_subscriptions(subs)
-
-    bot.send_message(message.chat.id, f"✅ تم تفعيل الاشتراك للمستخدم @{username}")
-    bot.send_message(user_id, "🎉 تم تفعيل اشتراكك، يمكنك الآن استخدام البوت.")
-
-@bot.message_handler(commands=["list_buttons"])
-def list_buttons(message):
-    if str(message.from_user.id) != str(ADMIN_ID): return
-    data = load_data()
-    text = "📋 الأزرار الحالية:\n"
-    for i, btn in enumerate(data["buttons"], 1):
-        text += f"{i}. {btn['label']}\n"
-    bot.send_message(message.chat.id, text)
-
-@bot.message_handler(commands=["add_button"])
-def add_button(message):
-    if str(message.from_user.id) != str(ADMIN_ID): return
-    msg = bot.send_message(message.chat.id, "📝 أرسل اسم الزر الجديد:")
-    bot.register_next_step_handler(msg, get_button_label)
-
-def get_button_label(message):
-    label = message.text
-    msg = bot.send_message(message.chat.id, "📝 أرسل الرسالة التفاعلية عند الضغط:")
-    bot.register_next_step_handler(msg, lambda m: save_new_button(label, m))
-
-def save_new_button(label, message):
-    prompt = message.text
-    data = load_data()
-    data["buttons"].append({"label": label, "prompt": prompt})
-    save_data(data)
-    bot.send_message(message.chat.id, f"✅ تم إضافة الزر: {label}")
-
-@bot.message_handler(commands=["remove_button"])
-def remove_button(message):
-    if str(message.from_user.id) != str(ADMIN_ID): return
-    data = load_data()
-    markup = types.InlineKeyboardMarkup()
-    for btn in data["buttons"]:
-        markup.add(types.InlineKeyboardButton(btn["label"], callback_data="delbtn_" + btn["label"]))
-    bot.send_message(message.chat.id, "🗑️ اختر الزر الذي تريد حذفه:", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("delbtn_"))
-def delete_button(call):
-    if str(call.from_user.id) != str(ADMIN_ID): return
-    label = call.data.replace("delbtn_", "")
-    data = load_data()
-    data["buttons"] = [b for b in data["buttons"] if b["label"] != label]
-    save_data(data)
-    bot.edit_message_text(f"✅ تم حذف الزر: {label}", call.message.chat.id, call.message.message_id)
-
-@bot.message_handler(func=lambda m: m.text == "⚙️ الأدمن" and str(m.from_user.id) == str(ADMIN_ID))
-def admin_panel(message):
-    bot.send_message(message.chat.id, "🛠️ لوحة تحكم الأدمن:\n/list_buttons - عرض الأزرار\n/add_button - إضافة زر\n/remove_button - حذف زر")
+    bot.send_message(user_id, "مرحباً بك في بوت الاختراق الوهمي! اختر نوع الاختراق:", reply_markup=main_buttons())
 
 @bot.message_handler(func=lambda m: True)
 def handle_buttons(message):
-    data = load_data()
-    for btn in data["buttons"]:
-        if message.text == btn["label"]:
-            if btn["prompt"]:
-                bot.send_message(message.chat.id, btn["prompt"])
-                bot.register_next_step_handler(message, lambda m: fake_process(m, btn["label"]))
-            else:
-                fake_process(message, btn["label"])
-            return
+    user_id = message.from_user.id
+    text = message.text
 
-def fake_process(message, label):
-    chat_id = message.chat.id
+    if not is_subscribed(user_id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🔗 اشترك الآن", url=f"https://t.me/{CHANNEL_USERNAME}"))
+        return bot.send_message(user_id, "📛 يجب الاشتراك في القناة لاستخدام البوت", reply_markup=markup)
 
-    loading_msgs = [
-        "🔍 جاري تحليل الهدف...",
-        "📡 الاتصال بالخوادم...",
-        "🧠 تفعيل الذكاء الاصطناعي...",
-        "🔓 فك التشفير...",
-        "📂 استخراج البيانات...",
-    ]
+    if text in ["📘 اختراق فيسبوك", "📷 اختراق انستقرام", "🎥 اختراق تيك توك", "📱 اختراق واتساب"]:
+        msg = bot.send_message(user_id, "📥 أرسل رابط الحساب أو رقم الهاتف:")
+        bot.register_next_step_handler(msg, process_fake_hack)
+    elif text == "📶 اختراق واي فاي":
+        bot.send_message(user_id, "🔍 جاري البحث عن الشبكات القريبة...")
+        bot.send_message(user_id, "📡 تم العثور على شبكة محمية... جاري تجربة الاختراق...")
+        bot.send_message(user_id, "✅ تم التوصيل بنجاح!\n(وهمي فقط للضحك 😂)")
+    elif text == "👤 عدد المستخدمين" and user_id == ADMIN_ID:
+        data = load_users()
+        bot.send_message(user_id, f"👥 عدد المستخدمين: {len(data['users'])}")
+    elif text == "📣 رسالة جماعية" and user_id == ADMIN_ID:
+        msg = bot.send_message(user_id, "✉️ أرسل الرسالة الآن:")
+        bot.register_next_step_handler(msg, broadcast)
 
-    sent_msg = bot.send_message(chat_id, loading_msgs[0])
-    time.sleep(2)
+def process_fake_hack(message):
+    user_id = message.from_user.id
+    bot.send_message(user_id, "🔓 جاري معالجة البيانات...")
+    bot.send_message(user_id, "⚙️ تم الوصول إلى الحساب!")
+    bot.send_message(user_id, "✅ تمت العملية بنجاح!\n(وهمية فقط للترفيه 🎭)")
 
-    progress_stages = [10, 25, 40, 55, 70, 85, 100]
-    for percent in progress_stages:
+def broadcast(message):
+    data = load_users()
+    for uid in data["users"]:
         try:
-            bot.edit_message_text(f"🔄 جاري الاختراق... {percent}% 🔄", chat_id, sent_msg.message_id)
-        except Exception:
+            bot.send_message(uid, message.text)
+        except:
             pass
-        time.sleep(1.5)
+    bot.send_message(message.chat.id, "✅ تم إرسال الرسالة إلى الجميع.")
 
-    for msg in loading_msgs[1:]:
-        bot.send_message(chat_id, msg)
-        time.sleep(1.5)
-
-    bot.send_message(chat_id, f"✅ كلمة السر المحتملة: pass@{str(message.from_user.id)[-3:]}{label[:3]}")
-    bot.send_message(chat_id, "✅ تم الاختراق بنجاح.")
-
-@app.route(f"/{API_TOKEN}", methods=["POST"])
+# Webhook endpoints
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    json_str = request.stream.read().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
+    update = telebot.types.Update.de_json(request.data.decode("utf-8"))
     bot.process_new_updates([update])
-    return "OK", 200
+    return "OK"
 
-@app.route("/")
-def index():
-    return "✅ البوت يعمل!"
+@app.route("/", methods=["GET"])
+def home():
+    return "بوت الاختراق يعمل ✅"
 
 bot.remove_webhook()
-bot.set_webhook(url=f"https://webhokbot-bothack.up.railway.app/{API_TOKEN}")
+bot.set_webhook(url=f"https://charhbot-production.up.railway.app/{TOKEN}")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
