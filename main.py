@@ -81,5 +81,5 @@ def webhook():
 # ✅ نقطة التشغيل - رابط مشروعك هنا ✅
 if __name__ == '__main__':
     bot.remove_webhook()
-    bot.set_webhook(url='https://webhokbot-production-421f.up.railway.app/')  # رابطك الصحيح هنا
+    https://webhokbot-production-421f.up.railway.app/
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
