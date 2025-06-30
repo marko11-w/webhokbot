@@ -29,7 +29,7 @@ def join_channel_button():
     )
     return markup
 
-# ✅ رسالة الترحيب
+# ✅ أمر /start
 @bot.message_handler(commands=['start'])
 def start(message: Message):
     if not is_user_subscribed(message.from_user.id):
@@ -46,7 +46,7 @@ def start(message: Message):
         description='احصل على تطبيق الاختراق الكامل بعد الدفع.',
         provider_token='STARS',
         currency='usd',
-        prices=[{'label': 'سعر التطبيق', 'amount': PRICE_IN_STARS * 100}],  # ×100 لأن Telegram يستخدم السنت
+        prices=[{'label': 'سعر التطبيق', 'amount': PRICE_IN_STARS * 100}],
         start_parameter='buy_file',
         invoice_payload='purchase_app'
     )
@@ -63,7 +63,7 @@ def send_file(message: Message):
     with open(FILE_PATH, 'rb') as f:
         bot.send_document(message.chat.id, f)
 
-# ✅ زر التحقق من الاشتراك
+# ✅ زر تحقق الاشتراك
 @bot.callback_query_handler(func=lambda call: call.data == 'check_sub')
 def check_subscription(call):
     if is_user_subscribed(call.from_user.id):
@@ -71,15 +71,15 @@ def check_subscription(call):
     else:
         bot.answer_callback_query(call.id, "❌ أنت لم تشترك بعد.", show_alert=True)
 
-# ✅ استقبال Webhook
+# ✅ استقبال Webhook من تيليجرام
 @app.route('/', methods=['POST'])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
     bot.process_new_updates([update])
     return 'ok', 200
 
-# ✅ نقطة التشغيل
+# ✅ نقطة التشغيل - رابط مشروعك هنا ✅
 if __name__ == '__main__':
     bot.remove_webhook()
-    bot.set_webhook(url='https://رابط-مشروعك.railway.app/')
+    bot.set_webhook(url='https://webhokbot-production-421f.up.railway.app/')  # رابطك الصحيح هنا
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
