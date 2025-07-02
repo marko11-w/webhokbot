@@ -1,176 +1,227 @@
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, request
-import json
+import threading
+import time
 import os
-import requests
+import yt_dlp
+from telebot import types
 
 TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
-CHANNEL_ID = "@MARK01i"
-ADMIN_ID = 7758666677
+bot = telebot.TeleBot(TOKEN)
+WEBHOOK_URL = "https://webhokbot-production.up.railway.app/"
 
 app = Flask(__name__)
-bot = telebot.TeleBot(TOKEN)
 
-CONFIG_FILE = "config.json"
-USERS_FILE = "users.json"
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot is running."
 
-# تحميل الإعدادات
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "w") as f:
-            json.dump({"active": True}, f)
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
+@app.route("/", methods=["POST"])
+def webhook():
+    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+    bot.process_new_updates([update])
+    return "ok", 200
 
-def save_config(data):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(data, f)
+bot.remove_webhook()
+time.sleep(1)
+bot.set_webhook(url=WEBHOOK_URL)
 
-# تسجيل المستخدمين
-def add_user(user_id):
-    if not os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "w") as f:
-            json.dump([], f)
-    with open(USERS_FILE) as f:
-        users = json.load(f)
-    if user_id not in users:
-        users.append(user_id)
-        with open(USERS_FILE, "w") as f:
-            json.dump(users, f)
+# إعدادات الملفات والصلاحيات
+USERS_FILE = "users.txt"
+BANNED_FILE = "banned.txt"
+ADMINS = [7758666677]
+FORCE_CHANNEL = "MARK01i"
 
-# التحقق من الاشتراك
+# وظائف مساعدة
+def save_user(user_id):
+    try:
+        with open(USERS_FILE, "a+") as f:
+            f.seek(0)
+            users = f.read().splitlines()
+            if str(user_id) not in users:
+                f.write(str(user_id) + "\n")
+    except: pass
+
+def is_banned(user_id):
+    try:
+        with open(BANNED_FILE, "r") as f:
+            return str(user_id) in f.read().splitlines()
+    except: return False
+
 def check_subscription(user_id):
     try:
-        res = bot.get_chat_member(CHANNEL_ID, user_id)
-        return res.status in ['member', 'creator', 'administrator']
-    except:
-        return False
+        chat_member = bot.get_chat_member(f"@{FORCE_CHANNEL}", user_id)
+        return chat_member.status in ['member', 'creator', 'administrator']
+    except: return False
 
-# /start
+# الأزرار
+def main_buttons(user_id):
+    buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    buttons.row("📤 أرسل رابط فيديو", "ℹ️ تعليمات")
+    buttons.row("💬 الدعم الفني")
+    if user_id in ADMINS:
+        buttons.row("⚙️ إدارة البوت")
+    return buttons
+
+def admin_buttons():
+    buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    buttons.row("👥 عدد المستخدمين", "📢 إرسال إعلان")
+    buttons.row("🚫 حظر مستخدم", "✅ فك الحظر")
+    buttons.row("📨 رسالة خاصة", "🔙 رجوع")
+    return buttons
+
+# واجهة البداية
 @bot.message_handler(commands=['start'])
-def start(message):
-    config = load_config()
-    if not config.get("active", True) and message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "❌ البوت متوقف حالياً من قبل الإدارة.")
-    
-    if not check_subscription(message.from_user.id):
-        keyboard = InlineKeyboardMarkup()
-        keyboard.add(InlineKeyboardButton("📢 اشترك في القناة", url=f"https://t.me/{CHANNEL_ID[1:]}"))
-        keyboard.add(InlineKeyboardButton("✅ تم الاشتراك", callback_data="check_sub"))
-        return bot.send_message(message.chat.id, "🔒 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=keyboard)
+def start_message(message):
+    user_id = message.from_user.id
+    if is_banned(user_id):
+        return bot.send_message(user_id, "❌ أنت محظور من استخدام البوت.")
+    if not check_subscription(user_id):
+        join_btn = types.InlineKeyboardMarkup()
+        join_btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
+        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=join_btn)
+    save_user(user_id)
+    bot.send_message(user_id,
+        "👋 *مرحباً بك في بوت تحميل الفيديوهات!*\n\n"
+        "🎥 *يدعم التحميل من TikTok، YouTube، Instagram، Pinterest، وغيرها!*\n\n"
+        "📥 *أرسل رابط الفيديو لتحميله فوراً.*",
+        parse_mode="Markdown",
+        reply_markup=main_buttons(user_id))
 
-    add_user(message.from_user.id)
-    bot.send_message(message.chat.id, "👋 أهلاً بك! أرسل الآن رابط أي فيديو وسأقوم بتحميله لك.")
+# تعليمات
+@bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
+def show_help(message):
+    bot.send_message(message.chat.id,
+    "📌 *تعليمات الاستخدام:*\n"
+    "1. أرسل رابط فيديو من TikTok أو YouTube...\n"
+    "2. انتظر التحميل.\n"
+    "3. استلم الفيديو مباشرة ✅", parse_mode="Markdown")
 
-# زر تحقق الاشتراك
-@bot.callback_query_handler(func=lambda call: call.data == "check_sub")
-def verify_sub(call):
-    if check_subscription(call.from_user.id):
-        bot.answer_callback_query(call.id, "✅ تم التحقق من الاشتراك!")
-        start(call.message)
-    else:
-        bot.answer_callback_query(call.id, "❌ لم يتم العثور على اشتراك!")
+# دعم فني
+@bot.message_handler(func=lambda m: m.text == "💬 الدعم الفني")
+def support_info(message):
+    bot.send_message(message.chat.id, "📨 تواصل مع الدعم: @M_A_R_K75")
 
-# استقبال الروابط
-@bot.message_handler(func=lambda msg: msg.text.startswith("http"))
-def handle_link(message):
-    config = load_config()
-    if not config.get("active", True) and message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "❌ البوت متوقف حالياً من قبل الإدارة.")
-    
-    if not check_subscription(message.from_user.id):
-        return start(message)
+# طلب رابط
+@bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
+def ask_for_link(message):
+    bot.send_message(message.chat.id, "✅ *أرسل الآن رابط الفيديو:*", parse_mode="Markdown")
 
-    add_user(message.from_user.id)
-    bot.send_chat_action(message.chat.id, "upload_video")
-    
-    url = message.text
+# تحميل فيديو
+def download_video(url, chat_id):
+    os.makedirs("temp", exist_ok=True)
+    output = f"temp/{chat_id}.mp4"
+    opts = {'format': 'mp4', 'outtmpl': output, 'quiet': True, 'no_warnings': True}
     try:
-        bot.send_message(message.chat.id, f"📥 جاري تحميل الفيديو...\n{url}")
-        # مثال API (استخدم API حقيقي للمنصات المتعددة)
-        res = requests.get(f"https://api.tikmate.cc/api/download?url={url}")
-        file_url = res.json().get("video")
-        if file_url:
-            bot.send_video(message.chat.id, file_url, caption="✅ تم تحميل الفيديو بنجاح!")
-        else:
-            bot.send_message(message.chat.id, "❌ لم أتمكن من تحميل الفيديو. تحقق من الرابط.")
+        with yt_dlp.YoutubeDL(opts) as ydl: ydl.download([url])
+        return output
+    except Exception as e:
+        print("Download error:", e)
+        return None
+
+@bot.message_handler(func=lambda m: m.text and m.text.startswith("http"))
+def handle_link(message):
+    user_id = message.from_user.id
+    if is_banned(user_id):
+        return bot.send_message(user_id, "❌ أنت محظور من استخدام البوت.")
+    if not check_subscription(user_id):
+        join_btn = types.InlineKeyboardMarkup()
+        join_btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
+        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=join_btn)
+    save_user(user_id)
+    msg = bot.send_message(user_id, "⏳ جاري تحميل الفيديو...")
+    path = download_video(message.text, user_id)
+    if path and os.path.exists(path):
+        with open(path, "rb") as vid: bot.send_video(user_id, vid)
+        os.remove(path)
+        bot.delete_message(user_id, msg.message_id)
+    else:
+        bot.send_message(user_id, "⚠️ لم أتمكن من تحميل الفيديو.")
+
+# دخول لوحة الإدارة
+@bot.message_handler(func=lambda m: m.text == "⚙️ إدارة البوت" and m.from_user.id in ADMINS)
+def show_admin_panel(message):
+    bot.send_message(message.chat.id, "🛠 مرحباً بك في لوحة الإدارة:", reply_markup=admin_buttons())
+
+@bot.message_handler(func=lambda m: m.text == "🔙 رجوع")
+def back_to_main(message):
+    bot.send_message(message.chat.id, "⬅️ عدنا للواجهة الرئيسية", reply_markup=main_buttons(message.from_user.id))
+
+# عرض عدد المستخدمين
+@bot.message_handler(func=lambda m: m.text == "👥 عدد المستخدمين" and m.from_user.id in ADMINS)
+def user_count(message):
+    try:
+        with open(USERS_FILE, "r") as f:
+            count = len(f.read().splitlines())
+        bot.send_message(message.chat.id, f"👥 عدد المستخدمين: {count}")
     except:
-        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء التحميل.")
+        bot.send_message(message.chat.id, "❌ لا يوجد بيانات.")
 
-# /admin لوحة تحكم الأدمن
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    config = load_config()
-    status = "🟢 يعمل" if config.get("active", True) else "🔴 متوقف"
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(
-        InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="broadcast"),
-        InlineKeyboardButton("👥 عدد المستخدمين", callback_data="count"),
-    )
-    keyboard.add(
-        InlineKeyboardButton("🛑 إيقاف البوت" if config.get("active", True) else "✅ تشغيل البوت", callback_data="toggle")
-    )
-    bot.send_message(message.chat.id, f"🎛 لوحة تحكم الأدمن:\n\nالحالة الحالية: {status}", reply_markup=keyboard)
+# إرسال إعلان
+@bot.message_handler(func=lambda m: m.text == "📢 إرسال إعلان" and m.from_user.id in ADMINS)
+def ask_broadcast(message):
+    sent_msg = bot.send_message(message.chat.id, "📝 أرسل الآن نص الإعلان:")
+    bot.register_next_step_handler(sent_msg, broadcast_message)
 
-# رد على أزرار لوحة التحكم
-@bot.callback_query_handler(func=lambda call: True)
-def admin_actions(call):
-    if call.from_user.id != ADMIN_ID:
-        return
-    
-    if call.data == "count":
-        if os.path.exists(USERS_FILE):
-            with open(USERS_FILE) as f:
-                users = json.load(f)
-            bot.answer_callback_query(call.id, f"👥 عدد المستخدمين: {len(users)}")
-        else:
-            bot.answer_callback_query(call.id, "لا يوجد مستخدمون بعد.")
+def broadcast_message(message):
+    try:
+        with open(USERS_FILE, "r") as f:
+            users = f.read().splitlines()
+        for uid in users:
+            try:
+                bot.send_message(uid, f"📢 إعلان من الإدارة:\n\n{message.text}")
+                time.sleep(0.1)
+            except: continue
+        bot.send_message(message.chat.id, "✅ تم إرسال الإعلان.")
+    except:
+        bot.send_message(message.chat.id, "❌ حدث خطأ أثناء الإرسال.")
 
-    elif call.data == "broadcast":
-        bot.send_message(call.message.chat.id, "📝 أرسل الآن الرسالة التي تريد إرسالها للجميع.")
-        bot.register_next_step_handler(call.message, send_broadcast)
+# حظر مستخدم
+@bot.message_handler(func=lambda m: m.text == "🚫 حظر مستخدم" and m.from_user.id in ADMINS)
+def ask_ban(message):
+    msg = bot.send_message(message.chat.id, "✏️ أرسل آيدي المستخدم لحظره:")
+    bot.register_next_step_handler(msg, ban_user)
 
-    elif call.data == "toggle":
-        config = load_config()
-        config["active"] = not config.get("active", True)
-        save_config(config)
-        new_status = "✅ تم تشغيل البوت." if config["active"] else "🛑 تم إيقاف البوت."
-        bot.send_message(call.message.chat.id, new_status)
+def ban_user(message):
+    with open(BANNED_FILE, "a") as f:
+        f.write(str(message.text.strip()) + "\n")
+    bot.send_message(message.chat.id, f"🚫 تم حظر المستخدم {message.text}")
 
-# إرسال رسالة جماعية
-def send_broadcast(message):
-    if not os.path.exists(USERS_FILE):
-        return bot.send_message(message.chat.id, "⚠️ لا يوجد مستخدمون.")
-    with open(USERS_FILE) as f:
-        users = json.load(f)
-    count = 0
-    for user_id in users:
-        try:
-            bot.copy_message(user_id, message.chat.id, message.message_id)
-            count += 1
-        except:
-            pass
-    bot.send_message(message.chat.id, f"✅ تم إرسال الرسالة إلى {count} مستخدم.")
+# فك الحظر
+@bot.message_handler(func=lambda m: m.text == "✅ فك الحظر" and m.from_user.id in ADMINS)
+def ask_unban(message):
+    msg = bot.send_message(message.chat.id, "✏️ أرسل آيدي المستخدم لفك الحظر:")
+    bot.register_next_step_handler(msg, unban_user)
 
-# غير ذلك
-@bot.message_handler(func=lambda m: True)
-def fallback(message):
-    bot.send_message(message.chat.id, "📎 أرسل رابط فيديو لتحميله من TikTok أو إنستقرام أو تويتر...")
+def unban_user(message):
+    try:
+        with open(BANNED_FILE, "r") as f:
+            lines = f.readlines()
+        with open(BANNED_FILE, "w") as f:
+            for line in lines:
+                if line.strip() != message.text.strip():
+                    f.write(line)
+        bot.send_message(message.chat.id, f"✅ تم فك الحظر عن {message.text}")
+    except:
+        bot.send_message(message.chat.id, "❌ فشل في فك الحظر.")
 
-# Webhook
-@app.route('/', methods=["POST"])
-def webhook():
-    update = request.get_json()
-    if update:
-        bot.process_new_updates([telebot.types.Update.de_json(update)])
-    return "OK", 200
+# رسالة خاصة
+@bot.message_handler(func=lambda m: m.text == "📨 رسالة خاصة" and m.from_user.id in ADMINS)
+def ask_pm(message):
+    msg = bot.send_message(message.chat.id, "✉️ أرسل الآيدي ثم الرسالة بالشكل:\n\n123456 رسالة")
+    bot.register_next_step_handler(msg, pm_send)
 
-@app.route('/', methods=["GET"])
-def index():
-    return "بوت تحميل الفيديوهات يعمل ✅", 200
+def pm_send(message):
+    try:
+        uid, txt = message.text.strip().split(" ", 1)
+        bot.send_message(int(uid), f"📩 رسالة من الأدمن:\n\n{txt}")
+        bot.send_message(message.chat.id, "✅ تم الإرسال.")
+    except:
+        bot.send_message(message.chat.id, "❌ صيغة خاطئة. استخدم:\n123456 رسالة")
 
-if __name__ == '__main__':
-    app.run()
+# بدء التشغيل
+def run_app():
+    app.run(host="0.0.0.0", port=8080)
+
+threading.Thread(target=run_app).start()
+bot.infinity_polling()
