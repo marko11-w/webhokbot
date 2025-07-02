@@ -1,90 +1,176 @@
 import telebot
-from telebot.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, request
+import json
 import os
+import requests
 
-# 🔐 بيانات البوت
-TOKEN = '7684563087:AAEO4rd2t7X3v8CsZMdfzOc9s9otm9OGxfw'
-CHANNEL_USERNAME = '@MARK01i'
-FILE_PATH = 'hack_app.apk'
-PRICE_IN_STARS = 1500  # بالسنت، لأن تيليجرام يتعامل بـ 100 = 1$
+TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
+CHANNEL_ID = "@MARK01i"
+ADMIN_ID = 7758666677
 
-# 🧠 تهيئة البوت و Flask
-bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
+bot = telebot.TeleBot(TOKEN)
 
-# ✅ التحقق من الاشتراك الإجباري
-def is_user_subscribed(user_id):
+CONFIG_FILE = "config.json"
+USERS_FILE = "users.json"
+
+# تحميل الإعدادات
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "w") as f:
+            json.dump({"active": True}, f)
+    with open(CONFIG_FILE) as f:
+        return json.load(f)
+
+def save_config(data):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f)
+
+# تسجيل المستخدمين
+def add_user(user_id):
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "w") as f:
+            json.dump([], f)
+    with open(USERS_FILE) as f:
+        users = json.load(f)
+    if user_id not in users:
+        users.append(user_id)
+        with open(USERS_FILE, "w") as f:
+            json.dump(users, f)
+
+# التحقق من الاشتراك
+def check_subscription(user_id):
     try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ['member', 'creator', 'administrator']
+        res = bot.get_chat_member(CHANNEL_ID, user_id)
+        return res.status in ['member', 'creator', 'administrator']
     except:
         return False
 
-# ✅ أزرار الاشتراك
-def join_channel_button():
-    markup = InlineKeyboardMarkup()
-    markup.add(
-        InlineKeyboardButton("📢 اشترك في القناة", url=f'https://t.me/{CHANNEL_USERNAME.strip("@")}'),
-        InlineKeyboardButton("✅ تحقّق من الاشتراك", callback_data='check_sub')
-    )
-    return markup
-
-# ✅ أمر /start
+# /start
 @bot.message_handler(commands=['start'])
-def start(message: Message):
-    if not is_user_subscribed(message.from_user.id):
-        bot.send_message(
-            message.chat.id,
-            "🚫 لا يمكنك استخدام البوت قبل الاشتراك في القناة.\n\n📢 اشترك ثم اضغط (تحقق).",
-            reply_markup=join_channel_button()
-        )
-        return
+def start(message):
+    config = load_config()
+    if not config.get("active", True) and message.from_user.id != ADMIN_ID:
+        return bot.send_message(message.chat.id, "❌ البوت متوقف حالياً من قبل الإدارة.")
+    
+    if not check_subscription(message.from_user.id):
+        keyboard = InlineKeyboardMarkup()
+        keyboard.add(InlineKeyboardButton("📢 اشترك في القناة", url=f"https://t.me/{CHANNEL_ID[1:]}"))
+        keyboard.add(InlineKeyboardButton("✅ تم الاشتراك", callback_data="check_sub"))
+        return bot.send_message(message.chat.id, "🔒 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=keyboard)
 
-    # ✅ إرسال الفاتورة للشراء
-    bot.send_invoice(
-        message.chat.id,
-        title='تطبيق الاختراق',
-        description='احصل على تطبيق الاختراق الكامل بعد الدفع.',
-        provider_token='STARS',  # هذا هو مزود Telegram Stars
-        currency='usd',
-        prices=[{'label': 'سعر التطبيق', 'amount': PRICE_IN_STARS * 100}],  # Telegram uses "cents"
-        start_parameter='buy_app',
-        invoice_payload='purchase_app'
-    )
+    add_user(message.from_user.id)
+    bot.send_message(message.chat.id, "👋 أهلاً بك! أرسل الآن رابط أي فيديو وسأقوم بتحميله لك.")
 
-# ✅ تأكيد الدفع قبل التحصيل
-@bot.pre_checkout_query_handler(func=lambda query: True)
-def checkout(query):
-    bot.answer_pre_checkout_query(query.id, ok=True)
-
-# ✅ بعد الدفع، إرسال الملف
-@bot.message_handler(content_types=['successful_payment'])
-def send_file(message: Message):
-    bot.send_message(message.chat.id, "✅ تم الدفع بنجاح! جاري إرسال تطبيق الاختراق...")
-    try:
-        with open(FILE_PATH, 'rb') as file:
-            bot.send_document(message.chat.id, file)
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء إرسال الملف:\n{e}")
-
-# ✅ تحقق من الاشتراك عند الضغط على "تحقق"
-@bot.callback_query_handler(func=lambda call: call.data == 'check_sub')
-def check_subscription(call):
-    if is_user_subscribed(call.from_user.id):
-        bot.send_message(call.message.chat.id, "✅ تم التحقق من اشتراكك بنجاح! أرسل /start للمتابعة.")
+# زر تحقق الاشتراك
+@bot.callback_query_handler(func=lambda call: call.data == "check_sub")
+def verify_sub(call):
+    if check_subscription(call.from_user.id):
+        bot.answer_callback_query(call.id, "✅ تم التحقق من الاشتراك!")
+        start(call.message)
     else:
-        bot.answer_callback_query(call.id, "❌ ما زلت غير مشترك في القناة.", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ لم يتم العثور على اشتراك!")
 
-# ✅ Webhook endpoint
-@app.route('/', methods=['POST'])
+# استقبال الروابط
+@bot.message_handler(func=lambda msg: msg.text.startswith("http"))
+def handle_link(message):
+    config = load_config()
+    if not config.get("active", True) and message.from_user.id != ADMIN_ID:
+        return bot.send_message(message.chat.id, "❌ البوت متوقف حالياً من قبل الإدارة.")
+    
+    if not check_subscription(message.from_user.id):
+        return start(message)
+
+    add_user(message.from_user.id)
+    bot.send_chat_action(message.chat.id, "upload_video")
+    
+    url = message.text
+    try:
+        bot.send_message(message.chat.id, f"📥 جاري تحميل الفيديو...\n{url}")
+        # مثال API (استخدم API حقيقي للمنصات المتعددة)
+        res = requests.get(f"https://api.tikmate.cc/api/download?url={url}")
+        file_url = res.json().get("video")
+        if file_url:
+            bot.send_video(message.chat.id, file_url, caption="✅ تم تحميل الفيديو بنجاح!")
+        else:
+            bot.send_message(message.chat.id, "❌ لم أتمكن من تحميل الفيديو. تحقق من الرابط.")
+    except:
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء التحميل.")
+
+# /admin لوحة تحكم الأدمن
+@bot.message_handler(commands=['admin'])
+def admin_panel(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    config = load_config()
+    status = "🟢 يعمل" if config.get("active", True) else "🔴 متوقف"
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(
+        InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="broadcast"),
+        InlineKeyboardButton("👥 عدد المستخدمين", callback_data="count"),
+    )
+    keyboard.add(
+        InlineKeyboardButton("🛑 إيقاف البوت" if config.get("active", True) else "✅ تشغيل البوت", callback_data="toggle")
+    )
+    bot.send_message(message.chat.id, f"🎛 لوحة تحكم الأدمن:\n\nالحالة الحالية: {status}", reply_markup=keyboard)
+
+# رد على أزرار لوحة التحكم
+@bot.callback_query_handler(func=lambda call: True)
+def admin_actions(call):
+    if call.from_user.id != ADMIN_ID:
+        return
+    
+    if call.data == "count":
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE) as f:
+                users = json.load(f)
+            bot.answer_callback_query(call.id, f"👥 عدد المستخدمين: {len(users)}")
+        else:
+            bot.answer_callback_query(call.id, "لا يوجد مستخدمون بعد.")
+
+    elif call.data == "broadcast":
+        bot.send_message(call.message.chat.id, "📝 أرسل الآن الرسالة التي تريد إرسالها للجميع.")
+        bot.register_next_step_handler(call.message, send_broadcast)
+
+    elif call.data == "toggle":
+        config = load_config()
+        config["active"] = not config.get("active", True)
+        save_config(config)
+        new_status = "✅ تم تشغيل البوت." if config["active"] else "🛑 تم إيقاف البوت."
+        bot.send_message(call.message.chat.id, new_status)
+
+# إرسال رسالة جماعية
+def send_broadcast(message):
+    if not os.path.exists(USERS_FILE):
+        return bot.send_message(message.chat.id, "⚠️ لا يوجد مستخدمون.")
+    with open(USERS_FILE) as f:
+        users = json.load(f)
+    count = 0
+    for user_id in users:
+        try:
+            bot.copy_message(user_id, message.chat.id, message.message_id)
+            count += 1
+        except:
+            pass
+    bot.send_message(message.chat.id, f"✅ تم إرسال الرسالة إلى {count} مستخدم.")
+
+# غير ذلك
+@bot.message_handler(func=lambda m: True)
+def fallback(message):
+    bot.send_message(message.chat.id, "📎 أرسل رابط فيديو لتحميله من TikTok أو إنستقرام أو تويتر...")
+
+# Webhook
+@app.route('/', methods=["POST"])
 def webhook():
-    update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
-    bot.process_new_updates([update])
-    return 'ok', 200
+    update = request.get_json()
+    if update:
+        bot.process_new_updates([telebot.types.Update.de_json(update)])
+    return "OK", 200
 
-# ✅ تشغيل التطبيق على Railway
+@app.route('/', methods=["GET"])
+def index():
+    return "بوت تحميل الفيديوهات يعمل ✅", 200
+
 if __name__ == '__main__':
-    bot.remove_webhook()
-    bot.set_webhook(url='https://webhokbot-production-421f.up.railway.app/')  # رابط مشروعك الصحيح
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    app.run()
