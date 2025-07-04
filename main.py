@@ -6,12 +6,10 @@ import os
 import yt_dlp
 from telebot import types
 
-# === إعدادات البوت ===
 TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
-WEBHOOK_URL = "https://webhokbot-production.up.railway.app/"
+WEBHOOK_URL = "https://webhokbot-production-421f.up.railway.app/"
 bot = telebot.TeleBot(TOKEN)
 
-# === Flask API لتفعيل Webhook ===
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -24,27 +22,24 @@ def webhook():
     bot.process_new_updates([update])
     return "ok", 200
 
-# === إعداد Webhook ===
 bot.remove_webhook()
 time.sleep(1)
 bot.set_webhook(url=WEBHOOK_URL)
 
-# === إعدادات النظام ===
 USERS_FILE = "users.txt"
 BANNED_FILE = "banned.txt"
 ADMINS = [7758666677]
 FORCE_CHANNEL = "MARK01i"
 
-# === تنظيف مجلد التحميل عند التشغيل ===
 def clean_temp_folder():
     if os.path.exists("temp"):
         for f in os.listdir("temp"):
             try:
                 os.remove(os.path.join("temp", f))
-            except: pass
+            except:
+                pass
 clean_temp_folder()
 
-# === وظائف مساعدة ===
 def save_user(user_id):
     try:
         with open(USERS_FILE, "a+") as f:
@@ -52,13 +47,15 @@ def save_user(user_id):
             users = f.read().splitlines()
             if str(user_id) not in users:
                 f.write(str(user_id) + "\n")
-    except: pass
+    except:
+        pass
 
 def is_banned(user_id):
     try:
         with open(BANNED_FILE, "r") as f:
             return str(user_id) in f.read().splitlines()
-    except: return False
+    except:
+        return False
 
 def check_subscription(user_id):
     try:
@@ -67,7 +64,6 @@ def check_subscription(user_id):
     except:
         return False
 
-# === واجهة المستخدم ===
 def main_buttons(user_id):
     buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons.row("📤 أرسل رابط فيديو", "ℹ️ تعليمات")
@@ -83,7 +79,6 @@ def admin_buttons():
     buttons.row("📨 رسالة خاصة", "🔙 رجوع")
     return buttons
 
-# === /start ===
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
@@ -101,7 +96,6 @@ def start(message):
         parse_mode="Markdown",
         reply_markup=main_buttons(user_id))
 
-# === تعليمات ===
 @bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
 def show_help(message):
     bot.send_message(message.chat.id,
@@ -111,17 +105,14 @@ def show_help(message):
         "3. استلم الفيديو مباشرة ✅",
         parse_mode="Markdown")
 
-# === الدعم الفني ===
 @bot.message_handler(func=lambda m: m.text == "💬 الدعم الفني")
 def support(message):
     bot.send_message(message.chat.id, "📨 تواصل مع الدعم: @M_A_R_K75")
 
-# === طلب رابط فيديو ===
 @bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
 def ask_link(message):
     bot.send_message(message.chat.id, "✅ *أرسل الآن رابط الفيديو:*", parse_mode="Markdown")
 
-# === تحميل فيديو ===
 def download_video(url, chat_id):
     os.makedirs("temp", exist_ok=True)
     output = f"temp/{chat_id}.mp4"
@@ -160,7 +151,6 @@ def handle_link(message):
     else:
         bot.send_message(user_id, "⚠️ لم أتمكن من تحميل الفيديو.")
 
-# === لوحة تحكم الأدمن ===
 @bot.message_handler(func=lambda m: m.text == "⚙️ إدارة البوت" and m.from_user.id in ADMINS)
 def admin_panel(message):
     bot.send_message(message.chat.id, "🛠 مرحباً بك في لوحة الإدارة:", reply_markup=admin_buttons())
@@ -237,8 +227,8 @@ def pm_send(message):
     except:
         bot.send_message(message.chat.id, "❌ صيغة خاطئة. مثال:\n123456 مرحباً")
 
-# === تشغيل السيرفر ===
 def run():
     app.run(host="0.0.0.0", port=8080)
 
+import threading
 threading.Thread(target=run).start()
