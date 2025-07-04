@@ -6,14 +6,14 @@ import os
 import yt_dlp
 from telebot import types
 
-# توكن البوت
+# ✅ توكن البوت
 TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
 bot = telebot.TeleBot(TOKEN)
 
-# رابط Webhook على Railway
-WEBHOOK_URL = "https://webhokbot-production.up.railway.app/"
+# ✅ رابط Webhook الخاص بـ Railway
+WEBHOOK_URL = "https://webhokbot-production-421f.up.railway.app/"
 
-# إعداد Flask لتشغيل Webhook
+# ✅ إعداد Flask لتشغيل Webhook
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -26,18 +26,19 @@ def webhook():
     bot.process_new_updates([update])
     return "ok", 200
 
+# ✅ إعداد Webhook في Telegram
 bot.remove_webhook()
 time.sleep(1)
 bot.set_webhook(url=WEBHOOK_URL)
 
-# 🔹 واجهة الأزرار الرئيسية
+# ✅ أزرار البوت
 def main_buttons():
     buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons.row("📤 أرسل رابط فيديو", "ℹ️ تعليمات")
     buttons.row("💬 الدعم الفني")
     return buttons
 
-# 🔹 رسالة البدء
+# ✅ رسالة البدء
 @bot.message_handler(commands=['start'])
 def start_message(message):
     bot.send_message(
@@ -49,7 +50,7 @@ def start_message(message):
         reply_markup=main_buttons()
     )
 
-# 🔹 تعليمات الاستخدام
+# ✅ تعليمات الاستخدام
 @bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
 def show_help(message):
     bot.send_message(message.chat.id,
@@ -60,17 +61,17 @@ def show_help(message):
     "_جميع التحميلات خاصة ومباشرة_ ✅",
     parse_mode="Markdown")
 
-# 🔹 دعم فني
+# ✅ الدعم الفني
 @bot.message_handler(func=lambda m: m.text == "💬 الدعم الفني")
 def support_info(message):
     bot.send_message(message.chat.id, "📨 للدعم الفني: @M_A_R_K75")
 
-# 🔹 رابط فيديو
+# ✅ استقبال زر "أرسل رابط فيديو"
 @bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
 def ask_for_link(message):
     bot.send_message(message.chat.id, "✅ *أرسل الآن رابط الفيديو الذي تريد تحميله:*", parse_mode="Markdown")
 
-# 🔹 تحميل الفيديو
+# ✅ تحميل الفيديو
 def download_video(url, chat_id):
     os.makedirs("temp", exist_ok=True)
     output_path = f"temp/{chat_id}.mp4"
@@ -88,7 +89,7 @@ def download_video(url, chat_id):
         print("خطأ:", e)
         return None
 
-# 🔹 استقبال أي رابط
+# ✅ استقبال روابط الفيديوهات
 @bot.message_handler(func=lambda message: message.text and message.text.startswith("http"))
 def handle_link(message):
     msg = bot.send_message(message.chat.id, "⏳ جاري تحميل الفيديو، الرجاء الانتظار...")
@@ -105,7 +106,7 @@ def handle_link(message):
     else:
         bot.send_message(message.chat.id, "⚠️ لم أتمكن من تحميل الفيديو. تحقق من الرابط.")
 
-# ✅ تشغيل البوت عبر Webhook على Railway
+# ✅ تشغيل Flask على Railway
 def run_app():
     app.run(host="0.0.0.0", port=8080)
 
