@@ -8,7 +8,7 @@ import os
 from telebot import types
 import yt_dlp
 
-# إعدادات البوت
+# --- إعدادات البوت ---
 TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
 WEBHOOK_URL = "https://webhokbot-production-421f.up.railway.app/"
 ADMINS = [7758666677]
@@ -18,7 +18,7 @@ DATA_FILE = "data.json"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# ========== حفظ المستخدمين ==========
+# --- حفظ المستخدمين ---
 def save_user(user_id):
     user_id = str(user_id)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -33,9 +33,9 @@ def save_user(user_id):
             with open(DATA_FILE, "w") as f:
                 json.dump(data, f, indent=4)
     except Exception as e:
-        print("خطأ في حفظ المستخدم:", e)
+        print("Error saving user:", e)
 
-# ========== التحقق من الاشتراك ==========
+# --- التحقق من الاشتراك ---
 def check_subscription(user_id):
     try:
         member = bot.get_chat_member(f"@{FORCE_CHANNEL}", user_id)
@@ -43,7 +43,7 @@ def check_subscription(user_id):
     except:
         return False
 
-# ========== أزرار ==========
+# --- أزرار ---
 def main_buttons(user_id):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("📤 أرسل رابط فيديو", "ℹ️ تعليمات")
@@ -52,7 +52,7 @@ def main_buttons(user_id):
         kb.row("👥 عدد المستخدمين", "📢 إرسال إعلان")
     return kb
 
-# ========== Flask Webhook ==========
+# --- Flask webhook routes ---
 @app.route("/", methods=["GET"])
 def index():
     return "Bot is running."
@@ -67,7 +67,7 @@ bot.remove_webhook()
 time.sleep(1)
 bot.set_webhook(url=WEBHOOK_URL)
 
-# ========== بدء البوت ==========
+# --- بدء البوت ---
 @bot.message_handler(commands=["start"])
 def start(message):
     user_id = message.from_user.id
@@ -79,22 +79,22 @@ def start(message):
     bot.send_message(user_id, "👋 مرحباً بك في بوت تحميل الفيديوهات!", reply_markup=main_buttons(user_id))
     bot.send_message(user_id, "✅ أرسل رابط الفيديو الآن ليتم تحميله لك:")
 
-# ========== تعليمات ==========
+# --- تعليمات ---
 @bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
 def help_msg(message):
     bot.send_message(message.chat.id, "📌 أرسل رابط أي فيديو من TikTok أو YouTube أو Instagram أو Pinterest لتحميله فوراً.")
 
-# ========== دعم ==========
+# --- دعم ---
 @bot.message_handler(func=lambda m: m.text == "💬 الدعم")
 def support_msg(message):
     bot.send_message(message.chat.id, "📨 تواصل مع الدعم: @M_A_R_K75")
 
-# ========== طلب رابط ==========
+# --- طلب رابط ---
 @bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
 def ask_link(message):
     bot.send_message(message.chat.id, "📥 أرسل الآن رابط الفيديو:")
 
-# ========== تحميل الفيديو ==========
+# --- تحميل الفيديو ---
 def download_video(url, chat_id):
     os.makedirs("temp", exist_ok=True)
     output = f"temp/{chat_id}.mp4"
@@ -130,7 +130,7 @@ def handle_link(message):
     else:
         bot.send_message(user_id, "⚠️ لم أتمكن من تحميل الفيديو.")
 
-# ========== عدد المستخدمين ==========
+# --- عدد المستخدمين ---
 @bot.message_handler(func=lambda m: m.text == "👥 عدد المستخدمين" and m.from_user.id in ADMINS)
 def show_user_count(message):
     try:
@@ -140,7 +140,7 @@ def show_user_count(message):
     except:
         bot.send_message(message.chat.id, "❌ لا يمكن قراءة البيانات.")
 
-# ========== إرسال إعلان ==========
+# --- إرسال إعلان ---
 @bot.message_handler(func=lambda m: m.text == "📢 إرسال إعلان" and m.from_user.id in ADMINS)
 def ask_broadcast(message):
     msg = bot.send_message(message.chat.id, "📝 أرسل نص الإعلان:")
@@ -163,7 +163,7 @@ def send_broadcast(message):
     except:
         bot.send_message(message.chat.id, "❌ حدث خطأ أثناء الإرسال.")
 
-# ========== تشغيل السيرفر ==========
+# --- تشغيل السيرفر ---
 def run():
     app.run(host="0.0.0.0", port=8080)
 
