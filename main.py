@@ -1,13 +1,14 @@
 import json
-import time
-import os
-import threading
 from datetime import datetime
 from flask import Flask, request
 import telebot
+import threading
+import time
+import os
 from telebot import types
 import yt_dlp
 import requests
+from bs4 import BeautifulSoup
 
 # --- إعدادات البوت ---
 TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
@@ -16,30 +17,35 @@ ADMINS = [7758666677]
 FORCE_CHANNEL = "MARK01i"
 DATA_FILE = "data.json"
 
-APIFY_TOKEN = "YOUR_APIFY_TOKEN"  # ضع توكن Apify هنا
-
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# —————————————— وظائف مساعدة ——————————————
+# --- حفظ المستخدمين ---
+def save_user(user_id):
+    user_id = str(user_id)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        if not os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "w") as f:
+                json.dump({}, f)
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+        if user_id not in data:
+            data[user_id] = now
+            with open(DATA_FILE, "w") as f:
+                json.dump(data, f, indent=4)
+    except Exception as e:
+        print("Error saving user:", e)
+
+# --- التحقق من الاشتراك ---
 def check_subscription(user_id):
     try:
-        return bot.get_chat_member(f"@{FORCE_CHANNEL}", user_id).status in ["member","creator","administrator"]
+        member = bot.get_chat_member(f"@{FORCE_CHANNEL}", user_id)
+        return member.status in ["member", "administrator", "creator"]
     except:
         return False
 
-def save_user(user_id):
-    uid = str(user_id)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    try:
-        data = {}
-        if os.path.exists(DATA_FILE):
-            data = json.load(open(DATA_FILE))
-        if uid not in data:
-            data[uid] = now
-            json.dump(data, open(DATA_FILE, "w"), indent=4)
-    except: pass
-
+# --- أزرار ---
 def main_buttons(user_id):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("📤 أرسل رابط فيديو", "ℹ️ تعليمات")
@@ -48,124 +54,153 @@ def main_buttons(user_id):
         kb.row("👥 عدد المستخدمين", "📢 إرسال إعلان")
     return kb
 
-# —————————————— Flask Webhook ——————————————
+# --- Flask webhook routes ---
 @app.route("/", methods=["GET"])
-def home(): return "Bot is running."
+def index():
+    return "Bot is running."
 
 @app.route("/", methods=["POST"])
 def webhook():
-    upd = telebot.types.Update.de_json(request.stream.read().decode())
-    bot.process_new_updates([upd])
-    return "ok",200
+    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+    bot.process_new_updates([update])
+    return "ok", 200
 
 bot.remove_webhook()
 time.sleep(1)
 bot.set_webhook(url=WEBHOOK_URL)
 
-# —————————————— ApiLabs Apify Downloader ——————————————
-def download_instagram_with_apify(url):
+# --- تحميل فيديوهات Instagram بدون كوكيز ---
+def download_instagram_video(url):
     try:
-        resp = requests.post(
-            f"https://api.apify.com/v2/acts/apilabs~instagram-downloader/run-sync-get-dataset-items?token={APIFY_TOKEN}",
-            json={"urls":[url],"proxy":{"useApifyProxy":True}}
+        session = requests.Session()
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        resp = session.post(
+            "https://snapinsta.app/action.php",
+            data={"url": url, "action": "post"},
+            headers=headers
         )
-        items = resp.json().get("items", [])
-        if items and "download_link" in items[0]:
-            return items[0]["download_link"]
+        soup = BeautifulSoup(resp.text, "html.parser")
+        video_url = soup.find("a", {"target": "_blank"})
+        if video_url:
+            return video_url["href"]
+        else:
+            return None
     except Exception as e:
-        print("Apify error:", e)
-    return None
+        print("Instagram download error:", e)
+        return None
 
-# —————————————— تحميل TikTok/YouTube عبر yt_dlp ——————————————
-def download_video(url, uid):
+# --- تحميل باقي الفيديوهات ---
+def download_video(url, chat_id):
     os.makedirs("temp", exist_ok=True)
-    out = f"temp/{uid}.mp4"
-    opts = {'format':'mp4','outtmpl':out,'quiet':True,'no_warnings':True}
+    output = f"temp/{chat_id}.mp4"
+    opts = {
+        'format': 'mp4',
+        'outtmpl': output,
+        'quiet': True,
+        'no_warnings': True
+    }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
-        return out
+        return output
     except Exception as e:
-        print("yt_dlp error:",e)
+        print("Download error:", e)
         return None
 
-# —————————————— أوامر البوت ——————————————
+# --- أوامر البوت ---
 @bot.message_handler(commands=["start"])
-def cmd_start(m):
-    if not check_subscription(m.from_user.id):
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("📢 اشترك أولاً", url=f"https://t.me/{FORCE_CHANNEL}"))
-        return bot.send_message(m.chat.id,"🚫 اشترك أولاً.",reply_markup=kb)
-    save_user(m.from_user.id)
-    bot.send_message(m.chat.id,"👋 أهلاً! أرسل الرابط لتحميل الفيديو.",reply_markup=main_buttons(m.from_user.id))
+def start(message):
+    user_id = message.from_user.id
+    if not check_subscription(user_id):
+        btn = types.InlineKeyboardMarkup()
+        btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
+        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=btn)
+    save_user(user_id)
+    bot.send_message(user_id, "👋 مرحباً بك في بوت تحميل الفيديوهات!", reply_markup=main_buttons(user_id))
+    bot.send_message(user_id, "✅ أرسل رابط الفيديو الآن ليتم تحميله لك:")
 
-@bot.message_handler(lambda m: m.text=="ℹ️ تعليمات")
-def cmd_help(m):
-    bot.send_message(m.chat.id,"📌 أرسل رابط فيديو من TikTok أو YouTube أو Instagram.")
+@bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
+def help_msg(message):
+    bot.send_message(message.chat.id, "📌 أرسل رابط أي فيديو من TikTok أو YouTube أو Instagram لتحميله فوراً.")
 
-@bot.message_handler(lambda m: m.text=="💬 الدعم")
-def cmd_support(m):
-    bot.send_message(m.chat.id,"📨 تواصل: @M_A_R_K75")
+@bot.message_handler(func=lambda m: m.text == "💬 الدعم")
+def support_msg(message):
+    bot.send_message(message.chat.id, "📨 تواصل مع الدعم: @M_A_R_K75")
 
-@bot.message_handler(lambda m: m.text=="📢 إرسال إعلان" and m.from_user.id in ADMINS)
-def cmd_announce(m):
-    msg = bot.send_message(m.chat.id,"📝 أرسل نص الإعلان:")
-    bot.register_next_step_handler(msg, send_announce)
+@bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
+def ask_link(message):
+    bot.send_message(message.chat.id, "📥 أرسل الآن رابط الفيديو:")
 
-def send_announce(m):
-    try:
-        data = json.load(open(DATA_FILE))
-    except:
-        data = {}
-    s,f=0,0
-    for uid in data:
-        try:
-            bot.send_message(int(uid),f"📣 إعلان:\n\n{m.text}")
-            s+=1
-            time.sleep(0.1)
-        except: f+=1
-    bot.send_message(m.chat.id,f"✅ تم: {s}, ❌ فشل: {f}")
+# --- التعامل مع جميع الروابط ---
+@bot.message_handler(func=lambda m: m.text and m.text.startswith("http"))
+def handle_link(message):
+    user_id = message.from_user.id
+    url = message.text.strip()
 
-@bot.message_handler(lambda m: m.text=="👥 عدد المستخدمين" and m.from_user.id in ADMINS)
-def cmd_users(m):
-    try:
-        data = json.load(open(DATA_FILE))
-        bot.send_message(m.chat.id,f"👥 مستخدمين: {len(data)}")
-    except:
-        bot.send_message(m.chat.id,"❌ خطأ في البيانات")
+    if not check_subscription(user_id):
+        btn = types.InlineKeyboardMarkup()
+        btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
+        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=btn)
 
-@bot.message_handler(lambda m: m.text and m.text.startswith("http"))
-def cmd_download(m):
-    uid = m.from_user.id
-    if not check_subscription(uid):
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("📢 اشترك أولاً", url=f"https://t.me/{FORCE_CHANNEL}"))
-        return bot.send_message(uid,"🚫 اشترك أولاً.",reply_markup=kb)
+    save_user(user_id)
+    msg = bot.send_message(user_id, "⏳ جاري التحميل...")
 
-    save_user(uid)
-    msg = bot.send_message(uid,"⏳ جاري التحميل...")
-
-    txt = m.text.strip()
-    if "instagram.com" in txt:
-        video_url = download_instagram_with_apify(txt)
-        if video_url:
-            bot.send_video(uid, video_url)
+    if "instagram.com" in url:
+        insta_video = download_instagram_video(url)
+        if insta_video:
+            bot.send_video(user_id, insta_video)
         else:
-            bot.send_message(uid,"⚠️ فشل تحميل إنستغرام.")
-        bot.delete_message(uid,msg.message_id)
+            bot.send_message(user_id, "⚠️ لم أتمكن من تحميل فيديو إنستغرام.")
+        bot.delete_message(user_id, msg.message_id)
         return
 
-    path = download_video(txt, uid)
+    path = download_video(url, user_id)
     if path and os.path.exists(path):
-        bot.send_video(uid, open(path, "rb"))
+        with open(path, "rb") as vid:
+            bot.send_video(user_id, vid)
         os.remove(path)
     else:
-        bot.send_message(uid,"⚠️ فشل تحميل الفيديو.")
-    bot.delete_message(uid,msg.message_id)
+        bot.send_message(user_id, "⚠️ لم أتمكن من تحميل الفيديو.")
+    bot.delete_message(user_id, msg.message_id)
 
-# —————————————— تشغيل السيرفر ——————————————
-def run_app():
+# --- عدد المستخدمين ---
+@bot.message_handler(func=lambda m: m.text == "👥 عدد المستخدمين" and m.from_user.id in ADMINS)
+def show_user_count(message):
+    try:
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+        bot.send_message(message.chat.id, f"👥 عدد المستخدمين: {len(data)}")
+    except:
+        bot.send_message(message.chat.id, "❌ لا يمكن قراءة البيانات.")
+
+# --- إرسال إعلان ---
+@bot.message_handler(func=lambda m: m.text == "📢 إرسال إعلان" and m.from_user.id in ADMINS)
+def ask_broadcast(message):
+    msg = bot.send_message(message.chat.id, "📝 أرسل نص الإعلان:")
+    bot.register_next_step_handler(msg, send_broadcast)
+
+def send_broadcast(message):
+    try:
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+        success = 0
+        fail = 0
+        for uid in data:
+            try:
+                bot.send_message(uid, f"📢 إعلان:\n\n{message.text}")
+                success += 1
+                time.sleep(0.1)
+            except:
+                fail += 1
+        bot.send_message(message.chat.id, f"✅ تم الإرسال لـ {success} مستخدم.\n❌ فشل: {fail}")
+    except:
+        bot.send_message(message.chat.id, "❌ حدث خطأ أثناء الإرسال.")
+
+# --- تشغيل السيرفر ---
+def run():
     app.run(host="0.0.0.0", port=8080)
 
-threading.Thread(target=run_app).start()
+threading.Thread(target=run).start()
 bot.infinity_polling()
