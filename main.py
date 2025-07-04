@@ -7,15 +7,15 @@ import json
 from datetime import datetime
 from telebot import types
 
-TOKEN = "توكن_البوت_هنا"
-WEBHOOK_URL = "رابط_الويب_هوك_هنا"
+TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
+WEBHOOK_URL = "https://webhokbot-production-421f.up.railway.app/"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 DATA_FILE = "data.json"
-ADMINS = [123456789]  # ضع آيدي الأدمن هنا
+ADMINS = [7758666677]
 
-# ========= ملفات المستخدمين =========
+# حفظ المستخدمين
 def save_user(user_id):
     user_id = str(user_id)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -34,7 +34,7 @@ def save_user(user_id):
     except Exception as e:
         print("خطأ في حفظ المستخدم:", e)
 
-# ========= واجهة Flask =========
+# إعداد webhook
 @app.route("/", methods=["GET"])
 def home():
     return "Bot is running!"
@@ -49,7 +49,7 @@ bot.remove_webhook()
 time.sleep(1)
 bot.set_webhook(url=WEBHOOK_URL)
 
-# ========= الأزرار =========
+# الأزرار
 def main_buttons(user_id):
     buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons.row("💬 الدعم", "ℹ️ تعليمات")
@@ -57,7 +57,7 @@ def main_buttons(user_id):
         buttons.row("📢 إرسال إعلان", "👥 عدد المستخدمين")
     return buttons
 
-# ========= start =========
+# بدء
 @bot.message_handler(commands=["start"])
 def start(message):
     user_id = message.from_user.id
@@ -68,16 +68,17 @@ def start(message):
         reply_markup=main_buttons(user_id)
     )
 
-# ========= دعم و تعليمات =========
+# تعليمات
 @bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
 def show_help(message):
     bot.send_message(message.chat.id, "📌 تعليمات الاستخدام:\n- أرسل أي رسالة للتجربة.")
 
+# دعم فني
 @bot.message_handler(func=lambda m: m.text == "💬 الدعم")
 def show_support(message):
-    bot.send_message(message.chat.id, "💬 تواصل مع الدعم: @اسم_الدعم")
+    bot.send_message(message.chat.id, "💬 تواصل مع الدعم: @M_A_R_K75")
 
-# ========= عدد المستخدمين =========
+# عدد المستخدمين
 @bot.message_handler(func=lambda m: m.text == "👥 عدد المستخدمين" and m.from_user.id in ADMINS)
 def user_count(message):
     try:
@@ -88,7 +89,7 @@ def user_count(message):
     except:
         bot.send_message(message.chat.id, "❌ لا يمكن قراءة البيانات.")
 
-# ========= إرسال إعلان =========
+# إرسال إعلان
 @bot.message_handler(func=lambda m: m.text == "📢 إرسال إعلان" and m.from_user.id in ADMINS)
 def ask_broadcast(message):
     msg = bot.send_message(message.chat.id, "📝 أرسل الآن نص الإعلان:")
@@ -113,7 +114,7 @@ def broadcast_message(message):
     except:
         bot.send_message(message.chat.id, "❌ حدث خطأ أثناء الإرسال.")
 
-# ========= تشغيل السيرفر =========
+# تشغيل السيرفر
 def run():
     app.run(host="0.0.0.0", port=8080)
 
