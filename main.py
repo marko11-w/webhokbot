@@ -7,6 +7,8 @@ import time
 import os
 from telebot import types
 import yt_dlp
+import requests
+from bs4 import BeautifulSoup
 
 # --- إعدادات البوت ---
 TOKEN = "8116602303:AAHuS7IZt5jivjG68XL3AIVAasCpUcZRLic"
@@ -67,34 +69,29 @@ bot.remove_webhook()
 time.sleep(1)
 bot.set_webhook(url=WEBHOOK_URL)
 
-# --- بدء البوت ---
-@bot.message_handler(commands=["start"])
-def start(message):
-    user_id = message.from_user.id
-    if not check_subscription(user_id):
-        btn = types.InlineKeyboardMarkup()
-        btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
-        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=btn)
-    save_user(user_id)
-    bot.send_message(user_id, "👋 مرحباً بك في بوت تحميل الفيديوهات!", reply_markup=main_buttons(user_id))
-    bot.send_message(user_id, "✅ أرسل رابط الفيديو الآن ليتم تحميله لك:")
+# --- تحميل فيديوهات Instagram بدون كوكيز ---
+def download_instagram_video(url):
+    try:
+        session = requests.Session()
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        resp = session.post(
+            "https://snapinsta.app/action.php",
+            data={"url": url, "action": "post"},
+            headers=headers
+        )
+        soup = BeautifulSoup(resp.text, "html.parser")
+        video_url = soup.find("a", {"target": "_blank"})
+        if video_url:
+            return video_url["href"]
+        else:
+            return None
+    except Exception as e:
+        print("Instagram download error:", e)
+        return None
 
-# --- تعليمات ---
-@bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
-def help_msg(message):
-    bot.send_message(message.chat.id, "📌 أرسل رابط أي فيديو من TikTok أو YouTube أو Instagram أو Pinterest لتحميله فوراً.")
-
-# --- دعم ---
-@bot.message_handler(func=lambda m: m.text == "💬 الدعم")
-def support_msg(message):
-    bot.send_message(message.chat.id, "📨 تواصل مع الدعم: @M_A_R_K75")
-
-# --- طلب رابط ---
-@bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
-def ask_link(message):
-    bot.send_message(message.chat.id, "📥 أرسل الآن رابط الفيديو:")
-
-# --- تحميل الفيديو ---
+# --- تحميل باقي الفيديوهات ---
 def download_video(url, chat_id):
     os.makedirs("temp", exist_ok=True)
     output = f"temp/{chat_id}.mp4"
@@ -112,23 +109,61 @@ def download_video(url, chat_id):
         print("Download error:", e)
         return None
 
-@bot.message_handler(func=lambda m: m.text and m.text.startswith("http"))
-def handle_link(message):
+# --- أوامر البوت ---
+@bot.message_handler(commands=["start"])
+def start(message):
     user_id = message.from_user.id
     if not check_subscription(user_id):
         btn = types.InlineKeyboardMarkup()
         btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
         return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=btn)
     save_user(user_id)
+    bot.send_message(user_id, "👋 مرحباً بك في بوت تحميل الفيديوهات!", reply_markup=main_buttons(user_id))
+    bot.send_message(user_id, "✅ أرسل رابط الفيديو الآن ليتم تحميله لك:")
+
+@bot.message_handler(func=lambda m: m.text == "ℹ️ تعليمات")
+def help_msg(message):
+    bot.send_message(message.chat.id, "📌 أرسل رابط أي فيديو من TikTok أو YouTube أو Instagram لتحميله فوراً.")
+
+@bot.message_handler(func=lambda m: m.text == "💬 الدعم")
+def support_msg(message):
+    bot.send_message(message.chat.id, "📨 تواصل مع الدعم: @M_A_R_K75")
+
+@bot.message_handler(func=lambda m: m.text == "📤 أرسل رابط فيديو")
+def ask_link(message):
+    bot.send_message(message.chat.id, "📥 أرسل الآن رابط الفيديو:")
+
+# --- التعامل مع جميع الروابط ---
+@bot.message_handler(func=lambda m: m.text and m.text.startswith("http"))
+def handle_link(message):
+    user_id = message.from_user.id
+    url = message.text.strip()
+
+    if not check_subscription(user_id):
+        btn = types.InlineKeyboardMarkup()
+        btn.add(types.InlineKeyboardButton("📢 اشترك الآن", url=f"https://t.me/{FORCE_CHANNEL}"))
+        return bot.send_message(user_id, "🚫 يجب الاشتراك في القناة لاستخدام البوت:", reply_markup=btn)
+
+    save_user(user_id)
     msg = bot.send_message(user_id, "⏳ جاري التحميل...")
-    path = download_video(message.text, user_id)
+
+    if "instagram.com" in url:
+        insta_video = download_instagram_video(url)
+        if insta_video:
+            bot.send_video(user_id, insta_video)
+        else:
+            bot.send_message(user_id, "⚠️ لم أتمكن من تحميل فيديو إنستغرام.")
+        bot.delete_message(user_id, msg.message_id)
+        return
+
+    path = download_video(url, user_id)
     if path and os.path.exists(path):
         with open(path, "rb") as vid:
             bot.send_video(user_id, vid)
         os.remove(path)
-        bot.delete_message(user_id, msg.message_id)
     else:
         bot.send_message(user_id, "⚠️ لم أتمكن من تحميل الفيديو.")
+    bot.delete_message(user_id, msg.message_id)
 
 # --- عدد المستخدمين ---
 @bot.message_handler(func=lambda m: m.text == "👥 عدد المستخدمين" and m.from_user.id in ADMINS)
