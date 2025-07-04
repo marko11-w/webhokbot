@@ -1,4 +1,5 @@
+flask
 pyTelegramBotAPI
-yt_dlp
-Flask
-pip install flask pyTelegramBotAPI yt_dlp requests beautifulsoup4
+yt-dlp
+requests
+beautifulsoup4
