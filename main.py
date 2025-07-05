@@ -2,7 +2,6 @@ import json
 from datetime import datetime
 from flask import Flask, request
 import telebot
-import threading
 import time
 import os
 from telebot import types
@@ -59,15 +58,11 @@ def main_buttons(user_id):
 def index():
     return "Bot is running."
 
-@app.route("/", methods=["POST"])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
     bot.process_new_updates([update])
     return "ok", 200
-
-bot.remove_webhook()
-time.sleep(1)
-bot.set_webhook(url=WEBHOOK_URL)
 
 # --- تحميل فيديوهات Instagram بدون كوكيز ---
 def download_instagram_video(url):
@@ -198,9 +193,8 @@ def send_broadcast(message):
     except:
         bot.send_message(message.chat.id, "❌ حدث خطأ أثناء الإرسال.")
 
-# --- تشغيل السيرفر ---
-def run():
-    app.run(host="0.0.0.0", port=8080)
-
-threading.Thread(target=run).start()
-bot.infinity_polling()
+# --- بدء السيرفر وتهيئة Webhook ---
+if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{WEBHOOK_URL}{TOKEN}")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
